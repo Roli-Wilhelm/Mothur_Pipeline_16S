@@ -352,6 +352,26 @@ if SFF or RERUN:
 		"./"+OUTPUT+"/"
 	]))
 
+
+	## Provide a version of the GG taxonomy file acceptable for importing into R
+	## I do not use Silva for this b/c it does not have consistent delimiting according to taxonomic levels 
+        os.system(' '.join([
+        	"cp",
+                "./"+OUTPUT+"/"+NAME+"_final.gg.taxonomy",
+                "./"+OUTPUT+"/"+NAME+"_final.gg.R.taxonomy"
+	]))
+
+        os.system(' '.join([
+        	"sed -i 's/     /;/g'",
+                "./"+OUTPUT+"/"+NAME+"_final.gg.R.taxonomy"
+	]))
+
+        os.system(' '.join([
+        	"sed -i 's/;//g'",
+                "./"+OUTPUT+"/"+NAME+"_final.gg.R.taxonomy"
+	]))
+
+
 else:
 	os.system(' '.join([
 		"for n in",
@@ -532,6 +552,24 @@ else:
 		"mv",
 		NAME+"_final.*",
 		"./"+OUTPUT+"/"
+	]))
+
+	## Provide a version of the GG taxonomy file acceptable for importing into R
+	## I do not use Silva for this b/c it does not have consistent delimiting according to taxonomic levels 
+        os.system(' '.join([
+        	"cp",
+                "./"+OUTPUT+"/"+NAME+"_final.gg.taxonomy",
+                "./"+OUTPUT+"/"+NAME+"_final.gg.R.taxonomy"
+	]))
+
+        os.system(' '.join([
+        	"sed -i 's/     /;/g'",
+                "./"+OUTPUT+"/"+NAME+"_final.gg.R.taxonomy"
+	]))
+
+        os.system(' '.join([
+        	"sed -i 's/;//g'",
+                "./"+OUTPUT+"/"+NAME+"_final.gg.R.taxonomy"
 	]))
 
 end = timeit.default_timer()
