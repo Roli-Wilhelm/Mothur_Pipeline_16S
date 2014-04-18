@@ -3,7 +3,7 @@ Mothur_Pipeline_16S
 
 Standard Pipeline for Cleaning, Classifying and constructing OTUs for 16S rRNA gene phylogenetic libraries
 
-**Provides ALL necessary files to use the R script** "Mothur_to_PhyloSeq_to_Differential_Abundance_Tools"
+**Provides ALL necessary files to use the R script**: "Mothur_to_PhyloSeq_to_Differential_Abundance_Tools"
 
 (in one case, a specially formatted taxonomy file)
 
