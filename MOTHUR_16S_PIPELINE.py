@@ -8,6 +8,11 @@ now = timeit.default_timer()
 Usage = """
 Usage:  ./MOTHUR_16S_PIPELINE.py -o BACTERIA_0.05 -n BACTERIA_0.05 -i IIKFCBR01.fasta -f IIKFCBR01.oligos -p 8
 
+or
+
+Usage:  ./MOTHUR_16S_PIPELINE.py -o BACTERIA_0.05 -n BACTERIA_0.05 -m IIKFCBR01.fasta -f IIKFCBR01.oligos -p 8
+
+
 REQUIRED ARGUMENTS:
 		-o	output directory
 	
@@ -15,6 +20,8 @@ REQUIRED ARGUMENTS:
 
                 -i      the input file (accepted: .fasta, .sff, .shhh.fasta. MUST SPECIFY if the latter two)
 			(if providing .fasta, one must provide a .qual file)
+
+		-m	specify directory if you would like to combine multiple .sff files from a specific directory
 
 		-f	the .oligos file
 
@@ -63,10 +70,11 @@ SFF=''
 ORDER=''
 PROCESSORS=''
 OUTPUT=''
+MIX=''
 Debug=''
 
 # Read command line args
-myopts, args = getopt.getopt(sys.argv[1:],"n:i:o:S:b:R:f:O:p:")
+myopts, args = getopt.getopt(sys.argv[1:],"n:i:o:S:b:R:f:O:p:m:")
 
 ###############################
 # o == option
@@ -89,6 +97,8 @@ for o, a in myopts:
         ORDER= a
     if o == '-p':
         PROCESSORS= a
+    if o == '-m':
+        MIX= a
     if o == '-b':
         Debug= a
 
@@ -101,33 +111,253 @@ if len(OUTPUT)>0:
                 print "\nOutput Folder Exists - Caution: Files May Be Re-Written"
         else:
                 os.mkdir(OUTPUT)
-if SFF:
-	INPUT = re.sub(".sff", "", INPUT)
-	print INPUT
-
+if MIX:
+	INPUT = []
 	if Debug:
-        	print "The basename of your input file is:\n"
-	        error.write(INPUT+"\n")
-elif RERUN:
-	INPUT = re.sub(".shhh.fasta", "", INPUT)
-	print INPUT
+       		print "You chose to merge multiple files for input.\n"
 
+	if SFF:
+		for FILE in glob.glob("./"+MIX+"/*.sff"):
+			INPUT.append(re.sub(".sff", "", FILE))
+
+			if Debug:
+			        error.write("The base filename of your input file is:"+re.sub(".sff", "", FILE)+"\n")
+	elif RERUN:
+		for FILE in glob.glob("./"+MIX+"/*.shhh.fasta"):
+			INPUT.append(re.sub(".shhh.fasta", "", FILE))
+
+			if Debug:
+			        error.write("The base filename of your input file is:"+re.sub(".shhh.fasta", "", FILE)+"\n")
+	else:
+		for FILE in glob.glob("./"+MIX+"/*.fasta"):
+			INPUT.append(re.sub(".fasta", "", FILE))
+
+			if Debug:
+			        error.write("The base filename of your input file is:"+re.sub(".fasta", "", FILE)+"\n")
 	if Debug:
-        	print "The basename of your input file is:\n"
-	        error.write(INPUT+"\n")
+       		error.write(str(INPUT)+"\n")
+	
 else:
-	INPUT = re.sub(".fasta", "", INPUT)
-	print INPUT
+	if SFF:
+		INPUT = re.sub(".sff", "", INPUT)
+		print INPUT
+
+		if Debug:
+        		print "The basename of your input file is:\n"
+		        error.write(INPUT+"\n")
+	elif RERUN:
+		INPUT = re.sub(".shhh.fasta", "", INPUT)
+		print INPUT
+
+		if Debug:
+        		print "The basename of your input file is:\n"
+		        error.write(INPUT+"\n")
+	else:
+		INPUT = re.sub(".fasta", "", INPUT)
+		print INPUT
+
+		if Debug:
+        		print "The basename of your input file is:\n"
+		        error.write(INPUT+"\n")
+
+	OLIGOS = re.sub(".oligos", "", OLIGOS)
+	print OLIGOS
+
+'''#Process and merge output from .sff files
+if MIX and SFF:
+	for FILE in INPUT:
+		if Debug:
+			error.write("You are now processing: "+FILE+"\n\n")
+		## The chemistry CAN be different for various sequencing runs, MOTHUR provides for this based on the "ORDER" of flows are read. This is sometimes necessary to specify.
+        	if ORDER:
+			os.system(' '.join([
+				"for n in",
+				FILE+".sff; do mothur \"# sffinfo(sff=$n, flow=T)\"; done"
+			]))
+			
+			if Debug:
+				error.write(' '.join([
+                                	"for n in",
+                                	FILE+".sff; do mothur \"# sffinfo(sff=$n, flow=T)\"; done"
+                        	])+"\n")
+
+
+			os.system(' '.join([
+				"for n in",
+				FILE+".flow; do mothur \"# trim.flows(flow=$n,",
+				"oligos="+FILE+".oligos,",
+				"pdiffs=2, bdiffs=1, minflows=200, maxflows=450,",
+	                        "order="+ORDER+",",
+				"processors="+PROCESSORS+")\"; done"
+			]))
+
+			if Debug:
+				error.write(' '.join([
+                        	        "for n in",
+                                	FILE+".flow; do mothur \"# trim.flows(flow=$n,",
+	                                "oligos="+FILE+".oligos,"
+        	                        "pdiffs=2, bdiffs=1, minflows=200, maxflows=450,",
+                	                "order="+ORDER+",",
+                        	        "processors="+PROCESSORS+")\"; done"
+	                        ])+"\n")
+
+        	        os.system(' '.join([
+                	        "for n in",
+                        	FILE+".flow.files; do mothur \"# shhh.flows(file=$n,",
+	                        "order="+ORDER+",",
+				"processors="+PROCESSORS+")\"; done"
+                	]))
+
+			if Debug:
+				error.write(' '.join([
+                	                "for n in",
+        	                        FILE+".flow.files; do mothur \"# shhh.flows(file=$n,",
+                        	        "order="+ORDER+",",
+	                                "processors="+PROCESSORS+")\"; done"
+        	                ])+"\n")
+
+	        else:
+        	        os.system(' '.join([
+                	        "for n in",
+                        	FILE+".sff; do mothur \"# sffinfo(sff=$n, flow=T)\"; done"
+	                ]))
+
+			if Debug:
+				error.write(' '.join([
+	                                "for n in",
+        	                        FILE+".sff; do mothur \"# sffinfo(sff=$n, flow=T)\"; done"
+                	        ])+"\n")
+
+        	        os.system(' '.join([
+                	        "for n in",
+                        	FILE+".flow; do mothur \"# trim.flows(flow=$n,",
+	                        "oligos="+FILE+".oligos,",
+        	                "pdiffs=2, bdiffs=1, minflows=200, maxflows=450,",
+				"processors="+PROCESSORS+")\"; done"
+	                ]))
+
+			if Debug:
+				error.write(' '.join([
+                                	"for n in",
+	                                FILE+".flow; do mothur \"# trim.flows(flow=$n,",
+        	                        "oligos="+FILE+".oligos,"
+                	                "pdiffs=2, bdiffs=1, minflows=200, maxflows=450,",
+                        	        "processors="+PROCESSORS+")\"; done"
+                        	])+"\n")
+
+        	        os.system(' '.join([
+                	        "for n in",
+                        	FILE+".flow.files; do mothur \"# shhh.flows(file=$n,",
+				"processors="+PROCESSORS+")\"; done"
+        	        ]))
+
+			if Debug:
+				error.write(' '.join([
+	                                "for n in",
+        	                        FILE+".flow.files; do mothur \"# shhh.flows(file=$n,",
+                	                "processors="+PROCESSORS+")\"; done"
+                        	])+"\n")'''
+
+
+## Concatenate multiple files into one
+if MIX and SFF or MIX and RERUN:
+
+	#Do concatenation
+	COMBO_NAME = NAME+"_Combined_Libraries"
 
 	if Debug:
-        	print "The basename of your input file is:\n"
-	        error.write(INPUT+"\n")
+		error.write("Your files hae been concatenated with the base name: "+COMBO_NAME)
 
-OLIGOS = re.sub(".oligos", "", OLIGOS)
-print OLIGOS
+	#FASTA
+	with open(MIX+'/'+COMBO_NAME+'.shhh.fasta', 'w') as outfile:
+	    for fname in INPUT:
+        	with open(fname+".shhh.fasta") as infile:
+	            for line in infile:
+        	        outfile.write(line)
 
+	#NAMES
+	with open(MIX+'/'+COMBO_NAME+'.shhh.names', 'w') as outfile:
+	    for fname in INPUT:
+        	with open(fname+".shhh.names") as infile:
+	            for line in infile:
+        	        outfile.write(line)
 
-if SFF:
+#	#GROUPS
+#	with open(MIX+'/'+COMBO_NAME+'.shhh.groups', 'w') as outfile:
+#	    for fname in INPUT:
+#       	with open(fname+".shhh.groups") as infile:
+#	            for line in infile:
+#       	        outfile.write(line)
+
+	#OLIGOS	
+	count = 0
+	with open(MIX+'/'+COMBO_NAME+'.oligos', 'w') as outfile:
+		for fname in INPUT:
+			with open(fname+".oligos") as infile:
+				if count != 0:
+					next(infile)
+					for line in infile:
+						outfile.write(line)
+				else:
+					for line in infile:
+						outfile.write(line)
+
+				count = count + 1
+
+	OLIGOS = MIX+'/'+COMBO_NAME
+	INPUT = MIX+'/'+COMBO_NAME
+	
+	if Debug:
+		error.write(str(OLIGOS))
+
+# Do concatenation of other files
+elif MIX:
+	#Do concatenation
+	COMBO_NAME = NAME+"_Combined_Libraries"
+
+	#FASTA
+	with open(MIX+'/'+COMBO_NAME+'.fasta', 'w') as outfile:
+	    for fname in INPUT:
+        	with open(fname+".fasta") as infile:
+	            for line in infile:
+        	        outfile.write(line)
+
+	#NAMES
+	with open(MIX+'/'+COMBO_NAME+'.names', 'w') as outfile:
+	    for fname in INPUT:
+        	with open(fname+".names") as infile:
+	            for line in infile:
+        	        outfile.write(line)
+
+#	#GROUPS
+#	with open(MIX+'/'+COMBO_NAME+'.groups', 'w') as outfile:
+#	    for fname in INPUT:
+#       	with open(fname+".groups") as infile:
+#	            for line in infile:
+#       	        outfile.write(line)
+
+	#OLIGOS	
+	count = 0
+	with open(MIX+'/'+COMBO_NAME+'.oligos', 'w') as outfile:
+		for fname in INPUT:
+			with open(fname+".oligos") as infile:
+				if count != 0:
+					next(infile)
+					for line in infile:
+						outfile.write(line)
+				else:
+					for line in infile:
+						outfile.write(line)
+
+				count = count + 1
+
+	OLIGOS = MIX+'/'+COMBO_NAME
+	INPUT = MIX+'/'+COMBO_NAME
+
+	if Debug:
+		error.write(str(OLIGOS))
+
+if not MIX and SFF:
 	## The chemistry CAN be different for various sequencing runs, MOTHUR provides for this based on the "ORDER" of flows are read. This is sometimes necessary to specify.
         if ORDER:
 		os.system(' '.join([
@@ -319,13 +549,13 @@ if SFF or RERUN:
 	os.system(' '.join([
 		"cp",
 		INPUT+".shhh.trim.unique.good.filter.unique.precluster.pick.silva.wang.pick.taxonomy",
-		NAME+"_final_silva.taxonomy"
+		NAME+"_final.silva.taxonomy"
 	]))
 
 	os.system(' '.join([
 		"cp",
 		INPUT+".shhh.trim.unique.good.filter.unique.precluster.pick.pick.gg.wang.taxonomy",
-		NAME+"_final_gg.taxonomy"
+		NAME+"_final.gg.taxonomy"
 	]))
 
 	#Make List File
@@ -340,7 +570,7 @@ if SFF or RERUN:
 		"for n in",
 		NAME+"_final.fasta; do mothur \"# cluster.split(fasta=$n,",
 		"name="+NAME+"_final.names,",
-		"taxonomy="+NAME+"_final_silva.taxonomy,",
+		"taxonomy="+NAME+"_final.silva.taxonomy,",
 		"splitmethod=classify, taxlevel=3,",
 		"processors="+PROCESSORS+")\"; done"
 	]))
@@ -352,6 +582,13 @@ if SFF or RERUN:
 		"./"+OUTPUT+"/"
 	]))
 
+	## Cat all logfiles in order of creation and move
+        os.system(' '.join([
+        	"cat",
+                "$(ls -t mothur.*)",
+                ">",
+                "./"+OUTPUT+"/"+NAME+".mothur.logfiles"
+	]))
 
 	## Provide a version of the GG taxonomy file acceptable for importing into R
 	## I do not use Silva for this b/c it does not have consistent delimiting according to taxonomic levels 
@@ -362,12 +599,12 @@ if SFF or RERUN:
 	]))
 
         os.system(' '.join([
-        	"sed -i 's/     /;/g'",
+        	"sed -i 's/\t/;/g'",
                 "./"+OUTPUT+"/"+NAME+"_final.gg.R.taxonomy"
 	]))
 
         os.system(' '.join([
-        	"sed -i 's/;//g'",
+        	"sed -i 's/;$//g'",
                 "./"+OUTPUT+"/"+NAME+"_final.gg.R.taxonomy"
 	]))
 
@@ -521,13 +758,13 @@ else:
 	os.system(' '.join([
 		"cp",
 		INPUT+".trim.unique.good.filter.unique.precluster.pick.silva.wang.pick.taxonomy",
-		NAME+"_final_silva.taxonomy"
+		NAME+"_final.silva.taxonomy"
 	]))
 
 	os.system(' '.join([
 		"cp",
 		INPUT+".trim.unique.good.filter.unique.precluster.pick.pick.gg.wang.taxonomy",
-		NAME+"_final_gg.taxonomy"
+		NAME+"_final.gg.taxonomy"
 	]))
 
 	#Make List File
@@ -542,7 +779,7 @@ else:
 		"for n in",
 		NAME+"_final.fasta; do mothur \"# cluster.split(fasta=$n,",
 		"name="+NAME+"_final.names,",
-		"taxonomy="+NAME+"_final_silva.taxonomy,",
+		"taxonomy="+NAME+"_final.silva.taxonomy,",
 		"splitmethod=classify, taxlevel=3,",
 		"processors="+PROCESSORS+")\"; done"
 	]))
@@ -554,6 +791,14 @@ else:
 		"./"+OUTPUT+"/"
 	]))
 
+	## Cat all logfiles in order of creation and move
+        os.system(' '.join([
+        	"cat",
+                "$(ls -t mothur.*)",
+                ">",
+                "./"+OUTPUT+"/"+NAME+".mothur.logfiles"
+	]))
+
 	## Provide a version of the GG taxonomy file acceptable for importing into R
 	## I do not use Silva for this b/c it does not have consistent delimiting according to taxonomic levels 
         os.system(' '.join([
@@ -563,16 +808,16 @@ else:
 	]))
 
         os.system(' '.join([
-        	"sed -i 's/     /;/g'",
+        	"sed -i 's/\t/;/g'",
                 "./"+OUTPUT+"/"+NAME+"_final.gg.R.taxonomy"
 	]))
 
         os.system(' '.join([
-        	"sed -i 's/;//g'",
+        	"sed -i 's/;$//g'",
                 "./"+OUTPUT+"/"+NAME+"_final.gg.R.taxonomy"
 	]))
 
 end = timeit.default_timer()
 
-print now - end
+print end - now
 
