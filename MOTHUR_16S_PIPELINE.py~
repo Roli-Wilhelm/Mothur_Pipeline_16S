@@ -428,7 +428,7 @@ if MIX:
 						if len(NO_SHHH) > 1:
 
 							#Replace all instances in the fasta file with sed
-							os.system(' '.join([
+							print(' '.join([
 								"sed",
 								"-i",
 								"\'s/"+DUPLICATE_SEQ+PRIMER_8+"/"+NEW_BARCODE+PRIMER_8+"/g\'",
@@ -444,7 +444,7 @@ if MIX:
 								]))
 	
 						else:
-							os.system(' '.join([
+							print(' '.join([
 								"sed",
 								"-i",
 								"\'s/"+DUPLICATE_SEQ+PRIMER_8+"/"+NEW_BARCODE+PRIMER_8+"/g\'",
