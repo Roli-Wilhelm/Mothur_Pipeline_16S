@@ -81,6 +81,7 @@ PROCESSORS=''
 OUTPUT=''
 MIX=''
 Debug=''
+NO_SHHH=''
 
 # Read command line args
 myopts, args = getopt.getopt(sys.argv[1:],"n:i:o:S:b:R:f:O:p:m:")
@@ -283,11 +284,18 @@ if MIX and SFF:
                 	                "processors="+PROCESSORS+")\"; done"
                         	])+"\n")
 
+if MIX and not SFF and not RERUN:
+	NO_SHHH = "TRUE"
+	print "NO_SHHH set to TRUE"
 
-## Concatenate multiple files into one
-NO_SHHH = ''
+################################################################################
+# Deal with the fact that the same barcode sequences may be used in multiple runs
+################################################################################
 
-if MIX and SFF or MIX and RERUN:
+#Strategy is to get a list of duplicates, and run through them by changing the oligo's file and then the .fasta sequence with randomly generated sequences
+if MIX:
+	#Concatenate OLIGOS Files
+	SAMPLE_LOCATION_DICT = {}	
 
 	#Do concatenation
 	COMBO_NAME = NAME+"_Combined_Libraries"
@@ -295,99 +303,41 @@ if MIX and SFF or MIX and RERUN:
 	if Debug:
 		error.write("Your files hae been concatenated with the base name: "+COMBO_NAME+"\n")
 
-	#FASTA
-	with open(MIX+'/'+COMBO_NAME+'.shhh.fasta', 'w') as outfile:
-	    for fname in INPUT:
-        	with open(fname+".shhh.fasta") as infile:
-	            for line in infile:
-        	        outfile.write(line)
-
-	#NAMES
-	with open(MIX+'/'+COMBO_NAME+'.shhh.names', 'w') as outfile:
-	    for fname in INPUT:
-        	with open(fname+".shhh.names") as infile:
-	            for line in infile:
-        	        outfile.write(line)
-
-	#OLIGOS	
 	count = 0
 	with open(MIX+'/'+COMBO_NAME+'.oligos', 'w') as outfile:
 		for fname in INPUT:
-			with open(fname+".oligos") as infile:
-				if count != 0:
-					next(infile)
+			if not re.search("Combined_Libraries", fname):
+				with open(MIX+"/"+fname+".oligos") as infile:
+					if count != 0:
+						next(infile)
+					
 					for line in infile:
-						outfile.write(line)
-				else:
-					for line in infile:
-						outfile.write(line)
+						line = line.strip("\r\n")
 
-				count = count + 1
+						#Write to new concatenated oligos file
+						outfile.write(line+"\n")
+						line = line.split()
 
-	OLIGOS = MIX+'/'+COMBO_NAME
-	INPUT = MIX+'/'+COMBO_NAME
-	
-	if Debug:
-		error.write(str(OLIGOS))
+						#Store which pyrotag sample came from which oligos file
+						if np.size(line)>2:
+							fname = re.sub("\\./","",fname)
+							SAMPLE_LOCATION_DICT[line[2]] = fname 
+							
+					count = count + 1
 
-# Do concatenation of other files
-elif MIX and not SFF or MIX and not RERUN:
-	#Do concatenation
-	COMBO_NAME = NAME+"_Combined_Libraries"
-
-	#FASTA
-	with open(MIX+'/'+COMBO_NAME+'.fasta', 'w') as outfile:
-	    for fname in INPUT:
-        	with open(fname+".fasta") as infile:
-	            for line in infile:
-        	        outfile.write(line)
-
-	#NAMES
-	with open(MIX+'/'+COMBO_NAME+'.names', 'w') as outfile:
-	    for fname in INPUT:
-        	with open(fname+".names") as infile:
-	            for line in infile:
-        	        outfile.write(line)
-
-	#OLIGOS	
-	count = 0
-	with open(MIX+'/'+COMBO_NAME+'.oligos', 'w') as outfile:
-		for fname in INPUT:
-			with open(fname+".oligos") as infile:
-				if count != 0:
-					next(infile)
-					for line in infile:
-						outfile.write(line)
-				else:
-					for line in infile:
-						outfile.write(line)
-
-				count = count + 1
-
-	OLIGOS = MIX+'/'+COMBO_NAME
-	INPUT = MIX+'/'+COMBO_NAME
-	NO_SHHH = "TRUE"
-
-	if Debug:
-		error.write(str(OLIGOS))
-
-################################################################################
-# Deal with the fact that the same barcode sequences may be used in multiple runs
-################################################################################
-
-#Strategy is to get a list of duplicates, and run through them by changing the oligo's file and then the .fasta sequence with randomly generated sequences
-
-if MIX:
+	## Check for Duplicates
 	DUPLICATE_DICT = {}
 	DUPLICATE_LIST = []
+	OLIGOS = MIX+'/'+COMBO_NAME
+
 	with open(OLIGOS+".oligos") as infile:
         	#Grab the first 9 nucleotides of the primer for future use
 	        PRIMER = infile.readline()
-        	PRIMER = PRIMER.split()
-	        PRIMER = PRIMER[1][0:8]
+		PRIMER = PRIMER.strip()
+        	SPLIT = PRIMER.split()
+	        PRIMER_8 = SPLIT[1][0:8]
 
 		#Read in all barcodes & sample IDs
-		next(infile)
 		for line in infile:
 			line = line.strip()
 			line = line.split()
@@ -403,17 +353,22 @@ if MIX:
 
 	#Get list of duplicates
 	DUPLICATE_BARCODES = list_duplicates(DUPLICATE_LIST)
-	
+
 	#Change sequence barcodes
 	mock_oligos = open("TEMP.oligos", "w")
+	mock_oligos.write(PRIMER+"\n")
 	
 	with open(OLIGOS+".oligos") as infile:
+		next(infile)
+
 		for line in infile:
 			DUPLICATE_SEQ = line.strip("\r\n")
 			DUPLICATE_SEQ = DUPLICATE_SEQ.split()
 			DUPLICATE_SEQ = DUPLICATE_SEQ[1]
+
 			#See if sequence is duplicated
 			if DUPLICATE_SEQ in DUPLICATE_BARCODES:
+
 				if np.size(DUPLICATE_DICT[DUPLICATE_SEQ]) > 1:
 					DUPLICATE_ID = DUPLICATE_DICT[DUPLICATE_SEQ][0]
 	
@@ -432,39 +387,43 @@ if MIX:
 						del DUPLICATE_DICT[DUPLICATE_SEQ][0]
 						
 						if Debug:
-							error.write("The Length of NO_SHHH is: "+str(len(NO_SHHH)))
+							error.write("The Length of NO_SHHH is: "+str(len(NO_SHHH))+"\n")
 	
+						## Find Correct NAME file
+						CORRECT_NAME = SAMPLE_LOCATION_DICT[DUPLICATE_ID]
+						
 						if len(NO_SHHH) > 1:
+
 							#Replace all instances in the fasta file with sed
 							os.system(' '.join([
 								"sed",
 								"-i",
-								"\'s/"+DUPLICATE_SEQ+PRIMER+"/"+NEW_BARCODE+PRIMER+"/g\'",
-								MIX+'/'+COMBO_NAME+".fasta"
+								"\'s/"+DUPLICATE_SEQ+PRIMER_8+"/"+NEW_BARCODE+PRIMER_8+"/g\'",
+								MIX+'/'+CORRECT_NAME+".fasta"
 							]))
 	
 							if Debug:
 								error.write(' '.join([
 									"sed",
 									"-i",
-									"\'s/"+DUPLICATE_SEQ+PRIMER+"/"+NEW_BARCODE+PRIMER+"/g\'",
-									MIX+'/'+COMBO_NAME+".fasta"+"\n"
+									"\'s/"+DUPLICATE_SEQ+PRIMER_8+"/"+NEW_BARCODE+PRIMER_8+"/g\'",
+									MIX+'/'+CORRECT_NAME+".fasta"+"\n"
 								]))
 	
 						else:
 							os.system(' '.join([
 								"sed",
 								"-i",
-								"\'s/"+DUPLICATE_SEQ+PRIMER+"/"+NEW_BARCODE+PRIMER+"/g\'",
-								MIX+'/'+COMBO_NAME+".shhh.fasta"
+								"\'s/"+DUPLICATE_SEQ+PRIMER_8+"/"+NEW_BARCODE+PRIMER_8+"/g\'",
+								MIX+'/'+CORRECT_NAME+".shhh.fasta"
 							]))
 	
 							if Debug:
 								error.write(' '.join([
 									"sed",
 									"-i",
-									"\'s/"+DUPLICATE_SEQ+PRIMER+"/"+NEW_BARCODE+PRIMER+"/g\'",
-									MIX+'/'+COMBO_NAME+".shhh.fasta"+"\n"
+									"\'s/"+DUPLICATE_SEQ+PRIMER_8+"/"+NEW_BARCODE+PRIMER_8+"/g\'",
+									MIX+'/'+CORRECT_NAME+".shhh.fasta"+"\n"
 								]))
 	
 						error.write("Finished Processing: "+DUPLICATE_ID+"\n")
@@ -492,6 +451,60 @@ if MIX:
 			MIX+'/'+COMBO_NAME+".oligos"
 		]))
 
+## Concatenate multiple files into one
+if MIX and SFF or MIX and RERUN:
+
+	#FASTA
+	with open(MIX+'/'+COMBO_NAME+'.shhh.fasta', 'w') as outfile:
+	    for fname in INPUT:
+		if not re.search("Combined_Libraries", fname):
+	        	with open(fname+".shhh.fasta") as infile:
+		            for line in infile:
+				line = line.strip("\r\n")
+        	        	outfile.write(line+"\n")
+
+	#NAMES
+	with open(MIX+'/'+COMBO_NAME+'.shhh.names', 'w') as outfile:
+	    for fname in INPUT:
+		if not re.search("Combined_Libraries", fname):
+	        	with open(fname+".shhh.names") as infile:
+		            for line in infile:
+				line = line.strip("\r\n")
+        	        	outfile.write(line+"\n")
+
+	OLIGOS = MIX+'/'+COMBO_NAME
+	INPUT = MIX+'/'+COMBO_NAME
+	
+	if Debug:
+		error.write(str(OLIGOS))
+
+# Do concatenation of other files
+elif MIX and not SFF and not RERUN:
+	#Do concatenation
+	COMBO_NAME = NAME+"_Combined_Libraries"
+
+	#FASTA
+	with open(MIX+'/'+COMBO_NAME+'.fasta', 'w') as outfile:
+	    for fname in INPUT:
+        	with open(fname+".fasta") as infile:
+	            for line in infile:
+			line = line.strip("\r\n")
+        	        outfile.write(line+"\n")
+
+	#NAMES
+	with open(MIX+'/'+COMBO_NAME+'.names', 'w') as outfile:
+	    for fname in INPUT:
+        	with open(fname+".names") as infile:
+	            for line in infile:
+			line = line.strip("\r\n")
+        	        outfile.write(line+"\n")
+
+	OLIGOS = MIX+'/'+COMBO_NAME
+	INPUT = MIX+'/'+COMBO_NAME
+
+	if Debug:
+		error.write(str(OLIGOS))
+
 if not MIX and SFF:
 	## The chemistry CAN be different for various sequencing runs, MOTHUR provides for this based on the "ORDER" of flows are read. This is sometimes necessary to specify.
         if ORDER:
@@ -503,7 +516,7 @@ if not MIX and SFF:
 		if Debug:
 			error.write(' '.join([
                    		"for n in",
-	                        INPUT+".sff; do mothur \"# sffinfo(sff=$n, flow=T)\"; done"
+	                        INPUT+".sff; do mothur \"# sffinfo(sff=$n, flow=T)\"; done\n"
         	        ]))
 
 		os.system(' '.join([
@@ -522,7 +535,7 @@ if not MIX and SFF:
                 	        "oligos="+OLIGOS+".oligos,"
                         	"pdiffs=2, bdiffs=1, minflows=200, maxflows=450,",
 	                        "order="+ORDER+",",
-        	                "processors="+PROCESSORS+")\"; done"
+        	                "processors="+PROCESSORS+")\"; done\n"
                 	]))
 
                 os.system(' '.join([
@@ -537,7 +550,7 @@ if not MIX and SFF:
 	                        "for n in",
         	                INPUT+".flow.files; do mothur \"# shhh.flows(file=$n,",
                 	        "order="+ORDER+",",
-                        	"processors="+PROCESSORS+")\"; done"
+                        	"processors="+PROCESSORS+")\"; done\n"
 	                ]))
 
         else:
@@ -549,7 +562,7 @@ if not MIX and SFF:
 		if Debug:
 			error.write(' '.join([
                    	     "for n in",
-	                        INPUT+".sff; do mothur \"# sffinfo(sff=$n, flow=T)\"; done"
+	                        INPUT+".sff; do mothur \"# sffinfo(sff=$n, flow=T)\"; done\n"
         	        ]))
 
                 os.system(' '.join([
@@ -566,7 +579,7 @@ if not MIX and SFF:
 	                        INPUT+".flow; do mothur \"# trim.flows(flow=$n,",
                         	"oligos="+OLIGOS+".oligos,"
                 	        "pdiffs=2, bdiffs=1, minflows=200, maxflows=450,",
-        	                "processors="+PROCESSORS+")\"; done"
+        	                "processors="+PROCESSORS+")\"; done\n"
 	                ]))
 
                 os.system(' '.join([
@@ -579,7 +592,7 @@ if not MIX and SFF:
 			error.write(' '.join([
 	                        "for n in",
         	                INPUT+".flow.files; do mothur \"# shhh.flows(file=$n,",
-                	        "processors="+PROCESSORS+")\"; done"
+                	        "processors="+PROCESSORS+")\"; done\n"
 	                ]))
 
 if SFF or RERUN:
@@ -595,7 +608,7 @@ if SFF or RERUN:
 	                "for n in",
         	        INPUT+".shhh.fasta; do mothur \"# summary.seqs(fasta=$n,",
                 	"name="+INPUT+".shhh.names,",
-	                "processors="+PROCESSORS+")\"; done"
+	                "processors="+PROCESSORS+")\"; done\n"
         	]))
 
 	os.system(' '.join([
@@ -612,7 +625,7 @@ if SFF or RERUN:
         	        INPUT+".shhh.fasta; do mothur \"# trim.seqs(fasta=$n,",
                 	"oligos="+OLIGOS+".oligos, name="+INPUT+".shhh.names,",
 	                "maxambig=0, maxhomop=8, bdiffs=1, pdiffs=2, minlength=200,",
-        	        "processors="+PROCESSORS+")\"; done"
+        	        "processors="+PROCESSORS+")\"; done\n"
 	        ]))
 
 	os.system(' '.join([
@@ -625,7 +638,7 @@ if SFF or RERUN:
 		error.write(' '.join([
 	                "for n in",
         	        INPUT+".shhh.trim.fasta; do mothur \"# unique.seqs(fasta=$n,",
-                	"name="+INPUT+".shhh.names)\"; done"
+                	"name="+INPUT+".shhh.names)\"; done\n"
 	]))
 
 	os.system(' '.join([
@@ -640,7 +653,7 @@ if SFF or RERUN:
 	                "for n in",
         	        INPUT+".shhh.trim.unique.fasta; do mothur \"# align.seqs(fasta=$n,",
                 	"reference=~/Phylogenetic_Gene_Databases/silva.bacteria/silva.bacteria.fasta, flip=T,",
-	                "processors="+PROCESSORS+")\"; done"
+	                "processors="+PROCESSORS+")\"; done\n"
         	]))
 
 	os.system(' '.join([
@@ -655,7 +668,7 @@ if SFF or RERUN:
 	                "for n in",
         	        INPUT+".shhh.trim.unique.align; do mothur \"# summary.seqs(fasta=$n,",
                 	"name="+INPUT+".shhh.trim.names,",
-	                "processors="+PROCESSORS+")\"; done"
+	                "processors="+PROCESSORS+")\"; done\n"
         	]))
 
 	#Get user feedback
@@ -686,7 +699,7 @@ if SFF or RERUN:
 	                "group="+INPUT+".shhh.groups,",
         	        "start="+start+",",
                 	"minlength="+minlength+",",
-	                "processors="+PROCESSORS+")\"; done"
+	                "processors="+PROCESSORS+")\"; done\n"
         	]))
 
 	os.system(' '.join([
@@ -701,7 +714,7 @@ if SFF or RERUN:
 	                "for n in",
         	        INPUT+".shhh.trim.unique.good.align; do mothur \"# filter.seqs(fasta=$n,",
                 	"vertical=T,",
-	                "processors="+PROCESSORS+")\"; done"
+	                "processors="+PROCESSORS+")\"; done\n"
         	]))
 
 	os.system(' '.join([
@@ -714,7 +727,7 @@ if SFF or RERUN:
 		error.write(' '.join([
 	                "for n in",
         	        INPUT+".shhh.trim.unique.good.filter.fasta; do mothur \"# unique.seqs(fasta=$n,",
-                	"name="+INPUT+".shhh.trim.good.names)\"; done"
+                	"name="+INPUT+".shhh.trim.good.names)\"; done\n"
 	        ]))
 
 	os.system(' '.join([
@@ -731,7 +744,7 @@ if SFF or RERUN:
         	        INPUT+".shhh.trim.unique.good.filter.unique.fasta; do mothur \"# pre.cluster(fasta=$n,",
                 	"name="+INPUT+".shhh.trim.unique.good.filter.names,",
 	                "group="+INPUT+".shhh.good.groups, diffs=2,",
-        	        "processors="+PROCESSORS+")\"; done"
+        	        "processors="+PROCESSORS+")\"; done\n"
 	        ]))
 
 
@@ -746,10 +759,10 @@ if SFF or RERUN:
 	if Debug:
 		error.write(' '.join([
 	                "for n in",
-        	        INPUT+".shhh.trim.unique.good.filter.unique.precluster.fasta; do mothur \"# chimera.uchime(fasta=$$
+        	        INPUT+".shhh.trim.unique.good.filter.unique.precluster.fasta; do mothur \"# chimera.uchime(fasta=$n,",
                 	"name="+INPUT+".shhh.trim.unique.good.filter.unique.precluster.names,",
 	                "group="+INPUT+".shhh.good.groups,",
-        	        "processors="+PROCESSORS+")\"; done"
+        	        "processors="+PROCESSORS+")\"; done\n"
 	        ]))
 
 	os.system(' '.join([
@@ -763,10 +776,10 @@ if SFF or RERUN:
 	if Debug:
 		error.write(' '.join([
 	                "for n in",
-        	        INPUT+".shhh.trim.unique.good.filter.unique.precluster.uchime.accnos; do mothur \"# remove.seqs(ac$
+        	        INPUT+".shhh.trim.unique.good.filter.unique.precluster.uchime.accnos; do mothur \"# remove.seqs(accnos=$n,",
                 	"fasta="+INPUT+".shhh.trim.unique.good.filter.unique.precluster.fasta,",
 	                "name="+INPUT+".shhh.trim.unique.good.filter.unique.precluster.names,",
-        	        "group="+INPUT+".shhh.good.groups)\"; done"
+        	        "group="+INPUT+".shhh.good.groups)\"; done\n"
 	        ]))
 
 	os.system(' '.join([
@@ -779,9 +792,9 @@ if SFF or RERUN:
 	if Debug:
 		error.write(' '.join([
 	                "for n in",
-        	        INPUT+".shhh.trim.unique.good.filter.unique.precluster.pick.fasta; do mothur \"# summary.seqs(fast$
+        	        INPUT+".shhh.trim.unique.good.filter.unique.precluster.pick.fasta; do mothur \"# summary.seqs(fasta=$n,",
                 	"name="+INPUT+".shhh.trim.unique.good.filter.unique.precluster.pick.names,",
-	                "processors="+PROCESSORS+")\"; done"
+	                "processors="+PROCESSORS+")\"; done\n"
         	]))
 
 	os.system(' '.join([
@@ -797,12 +810,12 @@ if SFF or RERUN:
 	if Debug:
 		error.write(' '.join([
 	                "for n in",
-        	        INPUT+".shhh.trim.unique.good.filter.unique.precluster.pick.fasta; do mothur \"# classify.seqs(fas$
+        	        INPUT+".shhh.trim.unique.good.filter.unique.precluster.pick.fasta; do mothur \"# classify.seqs(fasta=$n,",
                 	"name="+INPUT+".shhh.trim.unique.good.filter.unique.precluster.pick.names,",
 	                "group="+INPUT+".shhh.good.pick.groups,",
         	        "template=~/Phylogenetic_Gene_Databases/silva.bacteria/silva.bacteria.fasta,",
                 	"taxonomy=~/Phylogenetic_Gene_Databases/silva.bacteria/silva.bacteria.silva.tax, cutoff=50,",
-	                "processors="+PROCESSORS+")\"; done"
+	                "processors="+PROCESSORS+")\"; done\n"
         	]))
 
 	os.system(' '.join([
@@ -817,11 +830,11 @@ if SFF or RERUN:
 	if Debug:
 		error.write(' '.join([
 	                "for n in",
-                	INPUT+".shhh.trim.unique.good.filter.unique.precluster.pick.fasta; do mothur \"# remove.lineage(fa$
+                	INPUT+".shhh.trim.unique.good.filter.unique.precluster.pick.fasta; do mothur \"# remove.lineage(fasta=$n,",
         	        "name="+INPUT+".shhh.trim.unique.good.filter.unique.precluster.pick.names,",
 	                "group="+INPUT+".shhh.good.pick.groups,",
         	        "taxonomy="+INPUT+".shhh.trim.unique.good.filter.unique.precluster.pick.silva.wang.taxonomy,",
-                	"taxon=Mitochondria-Cyanobacteria_Chloroplast-Archaea-Eukarya-unknown)\"; done"
+                	"taxon=Mitochondria-Cyanobacteria_Chloroplast-Archaea-Eukarya-unknown)\"; done\n"
 	        ]))
 
 
@@ -838,12 +851,12 @@ if SFF or RERUN:
 	if Debug:
 		error.write(' '.join([
 	                "for n in",
-        	        INPUT+".shhh.trim.unique.good.filter.unique.precluster.pick.pick.fasta; do mothur \"# classify.seq$
+        	        INPUT+".shhh.trim.unique.good.filter.unique.precluster.pick.pick.fasta; do mothur \"# classify.seqs(fasta=$n,",
                 	"name="+INPUT+".shhh.trim.unique.good.filter.unique.precluster.pick.pick.names,",
 	                "group="+INPUT+".shhh.good.pick.pick.groups,",
         	        "template=~/Phylogenetic_Gene_Databases/GreenGenes_MothurFormatted/gg_13_5_99.fasta,",
                 	"taxonomy=~/Phylogenetic_Gene_Databases/GreenGenes_MothurFormatted/gg_13_5_99.gg.tax, cutoff=80,",
-	                "processors="+PROCESSORS+")\"; done"
+	                "processors="+PROCESSORS+")\"; done\n"
         	]))
 
 	##Rename Files to More Readable Names
@@ -857,7 +870,7 @@ if SFF or RERUN:
 		error.write(' '.join([
 	                "cp",
         	        INPUT+".shhh.trim.unique.good.filter.unique.precluster.pick.pick.names",
-                	NAME+"_final.names"
+                	NAME+"_final.names\n"
 	        ]))
 
 	os.system(' '.join([
@@ -870,7 +883,7 @@ if SFF or RERUN:
 		error.write(' '.join([
            	     "cp",
 	                INPUT+".shhh.trim.unique.good.filter.unique.precluster.pick.pick.fasta",
-        	        NAME+"_final.fasta"
+        	        NAME+"_final.fasta\n"
 	        ]))
 
 	os.system(' '.join([
@@ -883,7 +896,7 @@ if SFF or RERUN:
 		error.write(' '.join([
            	     "cp",
 	                INPUT+".shhh.good.pick.pick.groups",
-        	        NAME+"_final.groups"
+        	        NAME+"_final.groups\n"
 	        ]))
 
 	os.system(' '.join([
@@ -896,7 +909,7 @@ if SFF or RERUN:
 		error.write(' '.join([
 	                "cp",
         	        INPUT+".shhh.trim.unique.good.filter.unique.precluster.pick.silva.wang.pick.taxonomy",
-                	NAME+"_final.silva.taxonomy"
+                	NAME+"_final.silva.taxonomy\n"
 	        ]))
 
 	os.system(' '.join([
@@ -909,7 +922,7 @@ if SFF or RERUN:
 		error.write(' '.join([
 	                "cp",
         	        INPUT+".shhh.trim.unique.good.filter.unique.precluster.pick.pick.gg.wang.taxonomy",
-                	NAME+"_final.gg.taxonomy"
+                	NAME+"_final.gg.taxonomy\n"
 	        ]))
 
 	#Make List File
@@ -925,7 +938,7 @@ if SFF or RERUN:
 	                "for n in",
         	        NAME+"_final.fasta; do mothur \"# dist.seqs(fasta=$n,",
                 	"cutoff=0.3,",
-	                "processors="+PROCESSORS+")\"; done"
+	                "processors="+PROCESSORS+")\"; done\n"
         	]))
 
 	os.system(' '.join([
@@ -944,7 +957,7 @@ if SFF or RERUN:
 	      	   	"name="+NAME+"_final.names,",
 	                "taxonomy="+NAME+"_final.silva.taxonomy,",
         	        "splitmethod=classify, taxlevel=3,",
-	                "processors="+PROCESSORS+")\"; done"
+	                "processors="+PROCESSORS+")\"; done\n"
         	]))
 
 	#Move all Final Files to Output directory
@@ -958,7 +971,7 @@ if SFF or RERUN:
 		error.write(' '.join([
 	                "mv",
         	        NAME+"_final.*",
-                	"./"+OUTPUT+"/"
+                	"./"+OUTPUT+"/\n"
 	        ]))
 
 	## Cat all logfiles in order of creation and move
@@ -974,7 +987,7 @@ if SFF or RERUN:
 	                "cat",
         	        "$(ls -t mothur.*)",
                 	">",
-	                "./"+OUTPUT+"/"+NAME+".mothur.logfiles"
+	                "./"+OUTPUT+"/"+NAME+".mothur.logfiles\n"
         	]))
 
 	## Provide a version of the GG taxonomy file acceptable for importing into R
@@ -989,7 +1002,7 @@ if SFF or RERUN:
 		error.write(' '.join([
 	                "cp",
         	        "./"+OUTPUT+"/"+NAME+"_final.gg.taxonomy",
-                	"./"+OUTPUT+"/"+NAME+"_final.gg.R.taxonomy"
+                	"./"+OUTPUT+"/"+NAME+"_final.gg.R.taxonomy\n"
 	        ]))
 
 
@@ -1001,7 +1014,7 @@ if SFF or RERUN:
 	if Debug:
 		error.write(' '.join([
            	     "sed -i 's/\t/;/g'",
-                	"./"+OUTPUT+"/"+NAME+"_final.gg.R.taxonomy"
+                	"./"+OUTPUT+"/"+NAME+"_final.gg.R.taxonomy\n"
 	        ]))
 
         os.system(' '.join([
@@ -1012,7 +1025,7 @@ if SFF or RERUN:
 	if Debug:
 		error.write(' '.join([
 	                "sed -i 's/;$//g'",
-        	        "./"+OUTPUT+"/"+NAME+"_final.gg.R.taxonomy"
+        	        "./"+OUTPUT+"/"+NAME+"_final.gg.R.taxonomy\n"
 	        ]))
 
         os.system(' '.join([
@@ -1023,7 +1036,7 @@ if SFF or RERUN:
 	if Debug:
 		error.write(' '.join([
 	        	"rm",
-        	        "./mothur*.logfile"
+        	        "./mothur*.logfile\n"
 	        ]))
 
 else:
@@ -1039,7 +1052,7 @@ else:
 	                "for n in",
         	        INPUT+".fasta; do mothur \"# summary.seqs(fasta=$n,",
                 	"name="+INPUT+".names,",
-	                "processors="+PROCESSORS+")\"; done"
+	                "processors="+PROCESSORS+")\"; done\n"
         	]))
 
 	os.system(' '.join([
@@ -1058,7 +1071,7 @@ else:
 			"oligos="+OLIGOS+".oligos,",
 			"qfile="+INPUT+".qual,",
 			"maxambig=0, maxhomop=8, bdiffs=1, pdiffs=2, qwindowaverage=35, qwindowsize=50, minlength=200,",
-			"processors="+PROCESSORS+")\"; done"
+			"processors="+PROCESSORS+")\"; done\n"
 		]))
 
 	os.system(' '.join([
@@ -1071,7 +1084,7 @@ else:
 		error.write(' '.join([
 			"for n in",
 			INPUT+".trim.fasta; do mothur \"# unique.seqs(fasta=$n,",
-			"name="+INPUT+".names)\"; done"
+			"name="+INPUT+".names)\"; done\n"
 		]))
 
 	os.system(' '.join([
@@ -1086,7 +1099,7 @@ else:
 			"for n in",
 			INPUT+".trim.unique.fasta; do mothur \"# align.seqs(fasta=$n,",
 			"reference=~/Phylogenetic_Gene_Databases/silva.bacteria/silva.bacteria.fasta, flip=T,",
-			"processors="+PROCESSORS+")\"; done"
+			"processors="+PROCESSORS+")\"; done\n"
 		]))
 
 	os.system(' '.join([
@@ -1101,7 +1114,7 @@ else:
 			"for n in",
 			INPUT+".trim.unique.align; do mothur \"# summary.seqs(fasta=$n,",
 			"name="+INPUT+".trim.names,",
-			"processors="+PROCESSORS+")\"; done"
+			"processors="+PROCESSORS+")\"; done\n"
 		]))
 
 	#Get user feedback
@@ -1132,7 +1145,7 @@ else:
 			"group="+INPUT+".groups,",
 			"start="+start+",",
 			"minlength="+minlength+",",
-			"processors="+PROCESSORS+")\"; done"
+			"processors="+PROCESSORS+")\"; done\n"
 		]))
 
 	os.system(' '.join([
@@ -1147,7 +1160,7 @@ else:
 			"for n in",
 			INPUT+".trim.unique.good.align; do mothur \"# filter.seqs(fasta=$n,",
 			"vertical=T,",
-			"processors="+PROCESSORS+")\"; done"
+			"processors="+PROCESSORS+")\"; done\n"
 		]))
 
 	os.system(' '.join([
@@ -1160,7 +1173,7 @@ else:
 		error.write(' '.join([
 			"for n in",
 			INPUT+".trim.unique.good.filter.fasta; do mothur \"# unique.seqs(fasta=$n,",
-			"name="+INPUT+".trim.good.names)\"; done"
+			"name="+INPUT+".trim.good.names)\"; done\n"
 		]))
 
 	os.system(' '.join([
@@ -1177,7 +1190,7 @@ else:
 			INPUT+".trim.unique.good.filter.unique.fasta; do mothur \"# pre.cluster(fasta=$n,",
 			"name="+INPUT+".trim.unique.good.filter.names,",
 			"group="+INPUT+".good.groups, diffs=2,",
-			"processors="+PROCESSORS+")\"; done"
+			"processors="+PROCESSORS+")\"; done\n"
 		]))
 
 	os.system(' '.join([
@@ -1194,7 +1207,7 @@ else:
 			INPUT+".trim.unique.good.filter.unique.precluster.fasta; do mothur \"# chimera.uchime(fasta=$n,",
 			"name="+INPUT+".trim.unique.good.filter.unique.precluster.names,",
 			"group="+INPUT+".good.groups,",
-			"processors="+PROCESSORS+")\"; done"
+			"processors="+PROCESSORS+")\"; done\n"
 		]))
 
 	os.system(' '.join([
@@ -1208,10 +1221,10 @@ else:
 	if Debug:
 		error.write(' '.join([
 			"for n in",
-			INPUT+".trim.unique.good.filter.unique.precluster.uchime.accnos; do mothur \"# remove.seqs(accnos=$
+			INPUT+".trim.unique.good.filter.unique.precluster.uchime.accnos; do mothur \"# remove.seqs(accnos=$n,",
 			"fasta="+INPUT+".trim.unique.good.filter.unique.precluster.fasta,",
 			"name="+INPUT+".trim.unique.good.filter.unique.precluster.names,",
-			"group="+INPUT+".good.groups)\"; done"
+			"group="+INPUT+".good.groups)\"; done\n"
 		]))
 
 	os.system(' '.join([
@@ -1224,9 +1237,9 @@ else:
 	if Debug:
 		error.write(' '.join([
 			"for n in",
-			INPUT+".trim.unique.good.filter.unique.precluster.pick.fasta; do mothur \"# summary.seqs(fasta=$n,$
+			INPUT+".trim.unique.good.filter.unique.precluster.pick.fasta; do mothur \"# summary.seqs(fasta=$n,",
 			"name="+INPUT+".trim.unique.good.filter.unique.precluster.pick.names,",
-			"processors="+PROCESSORS+")\"; done"
+			"processors="+PROCESSORS+")\"; done\n"
 		]))
 
 	os.system(' '.join([
@@ -1242,12 +1255,12 @@ else:
 	if Debug:
 		error.write(' '.join([
 			"for n in",
-			INPUT+".trim.unique.good.filter.unique.precluster.pick.fasta; do mothur \"# classify.seqs(fasta=$n$
+			INPUT+".trim.unique.good.filter.unique.precluster.pick.fasta; do mothur \"# classify.seqs(fasta=$n,",
 			"name="+INPUT+".trim.unique.good.filter.unique.precluster.pick.names,",
 			"group="+INPUT+".good.pick.groups,",
 			"template=~/Phylogenetic_Gene_Databases/silva.bacteria/silva.bacteria.fasta,",
 			"taxonomy=~/Phylogenetic_Gene_Databases/silva.bacteria/silva.bacteria.silva.tax, cutoff=50,",
-			"processors="+PROCESSORS+")\"; done"
+			"processors="+PROCESSORS+")\"; done\n"
 		]))
 		
 	os.system(' '.join([
@@ -1262,11 +1275,11 @@ else:
 	if Debug:
 		error.write(' '.join([
 			"for n in",
-			INPUT+".trim.unique.good.filter.unique.precluster.pick.fasta; do mothur \"# remove.lineage(fasta=$$
+			INPUT+".trim.unique.good.filter.unique.precluster.pick.fasta; do mothur \"# remove.lineage(fasta=$n,",
 			"name="+INPUT+".trim.unique.good.filter.unique.precluster.pick.names,",
 			"group="+INPUT+".good.pick.groups,",
 			"taxonomy="+INPUT+".trim.unique.good.filter.unique.precluster.pick.silva.wang.taxonomy,",
-			"taxon=Mitochondria-Cyanobacteria_Chloroplast-Archaea-Eukarya-unknown)\"; done"
+			"taxon=Mitochondria-Cyanobacteria_Chloroplast-Archaea-Eukarya-unknown)\"; done\n"
 		]))
 
 	os.system(' '.join([
@@ -1282,12 +1295,12 @@ else:
 	if Debug:
 		error.write(' '.join([
 			"for n in",
-			INPUT+".trim.unique.good.filter.unique.precluster.pick.pick.fasta; do mothur \"# classify.seqs(fas$
+			INPUT+".trim.unique.good.filter.unique.precluster.pick.pick.fasta; do mothur \"# classify.seqs(fasta=$n,",
 			"name="+INPUT+".trim.unique.good.filter.unique.precluster.pick.pick.names,",
 			"group="+INPUT+".good.pick.pick.groups,",
 			"template=~/Phylogenetic_Gene_Databases/GreenGenes_MothurFormatted/gg_13_5_99.fasta,",
 			"taxonomy=~/Phylogenetic_Gene_Databases/GreenGenes_MothurFormatted/gg_13_5_99.gg.tax, cutoff=80,",
-			"processors="+PROCESSORS+")\"; done"
+			"processors="+PROCESSORS+")\"; done\n"
 		]))
 
 	##Rename Files to More Readable Names
@@ -1301,7 +1314,7 @@ else:
 		error.write(' '.join([
 			"cp",
 			INPUT+".trim.unique.good.filter.unique.precluster.pick.pick.names",
-			NAME+"_final.names"
+			NAME+"_final.names\n"
 		]))
 	
 	os.system(' '.join([
@@ -1314,7 +1327,7 @@ else:
 		error.write(' '.join([
 			"cp",
 			INPUT+".trim.unique.good.filter.unique.precluster.pick.pick.fasta",
-			NAME+"_final.fasta"
+			NAME+"_final.fasta\n"
 		]))
 
 	os.system(' '.join([
@@ -1327,7 +1340,7 @@ else:
 		error.write(' '.join([
 			"cp",
 			INPUT+".good.pick.pick.groups",
-			NAME+"_final.groups"
+			NAME+"_final.groups\n"
 		]))
 
 	os.system(' '.join([
@@ -1340,7 +1353,7 @@ else:
 		error.write(' '.join([
 			"cp",
 			INPUT+".trim.unique.good.filter.unique.precluster.pick.silva.wang.pick.taxonomy",
-			NAME+"_final.silva.taxonomy"
+			NAME+"_final.silva.taxonomy\n"
 		]))
 
 	os.system(' '.join([
@@ -1353,7 +1366,7 @@ else:
 		error.write(' '.join([
 			"cp",
 			INPUT+".trim.unique.good.filter.unique.precluster.pick.pick.gg.wang.taxonomy",
-			NAME+"_final.gg.taxonomy"
+			NAME+"_final.gg.taxonomy\n"
 		]))
 
 	#Make List File
@@ -1369,7 +1382,7 @@ else:
 			"for n in",
 			NAME+"_final.fasta; do mothur \"# dist.seqs(fasta=$n,",
 			"cutoff=0.3,",
-			"processors="+PROCESSORS+")\"; done"
+			"processors="+PROCESSORS+")\"; done\n"
 		]))
 
 	os.system(' '.join([
@@ -1388,7 +1401,7 @@ else:
 			"name="+NAME+"_final.names,",
 			"taxonomy="+NAME+"_final.silva.taxonomy,",
 			"splitmethod=classify, taxlevel=3,",
-			"processors="+PROCESSORS+")\"; done"
+			"processors="+PROCESSORS+")\"; done\n"
 		]))
 
 	#Move all Final Files to Output directory
@@ -1402,7 +1415,7 @@ else:
 		error.write(' '.join([
 			"mv",
 			NAME+"_final.*",
-			"./"+OUTPUT+"/"
+			"./"+OUTPUT+"/\n"
 		]))
 
 	## Cat all logfiles in order of creation and move
@@ -1418,7 +1431,7 @@ else:
 			"cat",
 			"$(ls -t mothur.*)",
 			">",
-			"./"+OUTPUT+"/"+NAME+".mothur.logfiles"
+			"./"+OUTPUT+"/"+NAME+".mothur.logfiles\n"
 		]))
 
 	## Provide a version of the GG taxonomy file acceptable for importing into R
@@ -1433,7 +1446,7 @@ else:
 		error.write(' '.join([
 			"cp",
 			"./"+OUTPUT+"/"+NAME+"_final.gg.taxonomy",
-			"./"+OUTPUT+"/"+NAME+"_final.gg.R.taxonomy"
+			"./"+OUTPUT+"/"+NAME+"_final.gg.R.taxonomy\n"
 		]))
 
         os.system(' '.join([
@@ -1444,7 +1457,7 @@ else:
 	if Debug:
 		error.write(' '.join([
 			"sed -i 's/\t/;/g'",
-			"./"+OUTPUT+"/"+NAME+"_final.gg.R.taxonomy"
+			"./"+OUTPUT+"/"+NAME+"_final.gg.R.taxonomy\n"
 		]))
 
         os.system(' '.join([
@@ -1455,7 +1468,7 @@ else:
 	if Debug:
 		error.write(' '.join([
 			"sed -i 's/;$//g'",
-			"./"+OUTPUT+"/"+NAME+"_final.gg.R.taxonomy"
+			"./"+OUTPUT+"/"+NAME+"_final.gg.R.taxonomy\n"
 		]))
 
         os.system(' '.join([
@@ -1466,7 +1479,7 @@ else:
 	if Debug:
 		error.write(' '.join([
 	        	"rm",
-        	        "./mothur*.logfile"
+        	        "./mothur*.logfile\n"
 	        ]))
 
 end = timeit.default_timer()
