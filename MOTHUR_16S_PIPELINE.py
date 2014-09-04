@@ -1,5 +1,5 @@
 #!/usr/bin/python
-import sys, os, re, getopt, glob, numpy as np, random
+import sys, os, re, getopt, glob, numpy as np
 import timeit
 import itertools
 
@@ -10,7 +10,7 @@ Usage:  ./MOTHUR_16S_PIPELINE.py -o BACTERIA_0.05 -n BACTERIA_0.05 -i IIKFCBR01.
 
 or
 
-Usage:  ./MOTHUR_16S_PIPELINE.py -o BACTERIA_0.05 -n BACTERIA_0.05 -m IIKFCBR01.fasta -f IIKFCBR01.oligos -p 8
+Usage:  ./MOTHUR_16S_PIPELINE.py -o BACTERIA_0.05 -n BACTERIA_0.05 -m IIKFCBR01.fasta -p 8
 
 
 REQUIRED ARGUMENTS:
@@ -39,7 +39,7 @@ DEPENDENCY:
 		
 
 OPTIONAL:
-		-S <Y>	Input is .sff file
+		-S <Y>	Input is .sff file (or WAS derived from a .sff file)
 			(Must provide "Y")
 
 		-R <Y>	SELECT IF you've already run .shhh flows and do not want to re-run (obviously b/c it takes forever), choose this option.
@@ -63,6 +63,11 @@ it makes the assumption that the first 9 nucleotides of your primer are not dege
 This is b/c the barcodes will be made unique for all of your reads and to ensure short barcode length sequences
 within your sequences are not erroneously changed, the script searches for barcode + 9 nucleotides of primer.
 
+Usage:  ./MOTHUR_16S_PIPELINE.py -o BACTERIA_0.05 -n BACTERIA_0.05 -i IIKFCBR01.fasta -f IIKFCBR01.oligos -p 8
+
+or
+
+Usage:  ./MOTHUR_16S_PIPELINE.py -o BACTERIA_0.05 -n BACTERIA_0.05 -m IIKFCBR01.fasta -p 8
 """
 
 if len(sys.argv)<3:
@@ -72,8 +77,8 @@ if len(sys.argv)<3:
 
 # Store input and output file names
 NAME=''
-INPUT=''
-OLIGOS=''
+INPUT=[]
+OLIGOS=[]
 RERUN=''
 SFF=''
 ORDER=''
@@ -81,7 +86,6 @@ PROCESSORS=''
 OUTPUT=''
 MIX=''
 Debug=''
-NO_SHHH = ''
 
 # Read command line args
 myopts, args = getopt.getopt(sys.argv[1:],"n:i:o:S:b:R:f:O:p:m:")
@@ -112,66 +116,62 @@ for o, a in myopts:
     if o == '-b':
         Debug= a
 
-####
-# Function to Find Duplicates in List
-####
-def list_duplicates(seq):
-	seen = set()
-	# adds all elements it doesn't know yet to seen and all other to seen_twice
-	seen_add = seen.add
-
-	# turn the set into a list (as requested)
-	seen_twice = set( x for x in seq if x in seen or seen_add(x) )
-
-	return list(seen_twice)
-
-def id_generator(size, chars):
-        return ''.join(random.choice(chars) for _ in range(size))
-
-if Debug:
-        print "You are in Debugging Mode"
-        error = open("command.log", "w")
-
 if len(OUTPUT)>0:
         if os.path.exists('./' + OUTPUT):
                 print "\nOutput Folder Exists - Caution: Files May Be Re-Written"
         else:
                 os.mkdir(OUTPUT)
+
+## Print Debug Info (not really used much in this script)
+if Debug:
+        print "You are in Debugging Mode"
+        
+        if len(OUTPUT)>0:
+        	error = open(OUTPUT+"/command.log", "w")
+        else:
+        	error = open("command.log", "w")
+        	
 if MIX:
 	INPUT = []
 	if Debug:
        		print "You chose to merge multiple files for input.\n"
 
-	if SFF:
-		for FILE in glob.glob("./"+MIX+"/*.sff"):
+	if SFF and not RERUN:
+		for FILE in glob.glob(MIX+"/*.sff"):
+			FILE = re.sub(MIX, "", FILE)
+                        FILE = re.sub("./", "", FILE)
 			INPUT.append(re.sub(".sff", "", FILE))
 
-			if Debug:
-			        error.write("The base filename of your input file is:"+re.sub(".sff", "", FILE)+"\n")
-	elif RERUN:
-		for FILE in glob.glob("./"+MIX+"/*.shhh.fasta"):
+		if Debug:
+		        error.write("The base filename of your input file is:"+re.sub(".sff", "", FILE)+"\n")
+	elif SFF and RERUN:
+		for FILE in glob.glob(MIX+"/*.shhh.fasta"):
+                        FILE = re.sub(MIX, "", FILE)
+                        FILE = re.sub("./", "", FILE)
 			INPUT.append(re.sub(".shhh.fasta", "", FILE))
 
-			if Debug:
-			        error.write("The base filename of your input file is:"+re.sub(".shhh.fasta", "", FILE)+"\n")
+		if Debug:
+		        error.write("The base filename of your input file is:"+re.sub(".shhh.fasta", "", FILE)+"\n")
 	else:
-		for FILE in glob.glob("./"+MIX+"/*.fasta"):
+		for FILE in glob.glob(MIX+"/*.fasta"):
+                        FILE = re.sub(MIX, "", FILE)
+                        FILE = re.sub("./", "", FILE)
 			INPUT.append(re.sub(".fasta", "", FILE))
 
-			if Debug:
-			        error.write("The base filename of your input file is:"+re.sub(".fasta", "", FILE)+"\n")
+		if Debug:
+		        error.write("The base filename of your input file is:"+re.sub(".fasta", "", FILE)+"\n")
 	if Debug:
        		error.write(str(INPUT)+"\n")
 	
 else:
-	if SFF:
+	if SFF and not RERUN:
 		INPUT = re.sub(".sff", "", INPUT)
 		print INPUT
 
 		if Debug:
         		print "The basename of your input file is:\n"
 		        error.write(INPUT+"\n")
-	elif RERUN:
+	elif SFF and RERUN:
 		INPUT = re.sub(".shhh.fasta", "", INPUT)
 		print INPUT
 
@@ -190,12 +190,16 @@ else:
 	print OLIGOS
 
 #Process and merge output from .sff files
-if MIX and SFF:
+if SFF and not RERUN:
 	for FILE in INPUT:
 		if Debug:
 			error.write("You are now processing: "+FILE+"\n\n")
 		## The chemistry CAN be different for various sequencing runs, MOTHUR provides for this based on the "ORDER" of flows are read. This is sometimes necessary to specify.
+	        if MIX:
+        		OLIGOS = FILE
+        		
         	if ORDER:
+	
 			os.system(' '.join([
 				"for n in",
 				FILE+".sff; do mothur \"# sffinfo(sff=$n, flow=T)\"; done"
@@ -204,14 +208,13 @@ if MIX and SFF:
 			if Debug:
 				error.write(' '.join([
                                 	"for n in",
-                                	FILE+".sff; do mothur \"# sffinfo(sff=$n, flow=T)\"; done"
-                        	])+"\n")
-
+                                	FILE+".sff; do mothur \"# sffinfo(sff=$n, flow=T)\"; done\n"
+                        	]))
 
 			os.system(' '.join([
 				"for n in",
 				FILE+".flow; do mothur \"# trim.flows(flow=$n,",
-				"oligos="+FILE+".oligos,",
+				"oligos="+OLIGOS+".oligos,",
 				"pdiffs=2, bdiffs=1, minflows=200, maxflows=450,",
 	                        "order="+ORDER+",",
 				"processors="+PROCESSORS+")\"; done"
@@ -221,11 +224,11 @@ if MIX and SFF:
 				error.write(' '.join([
                         	        "for n in",
                                 	FILE+".flow; do mothur \"# trim.flows(flow=$n,",
-	                                "oligos="+FILE+".oligos,"
+	                                "oligos="+OLIGOS+".oligos,"
         	                        "pdiffs=2, bdiffs=1, minflows=200, maxflows=450,",
                 	                "order="+ORDER+",",
-                        	        "processors="+PROCESSORS+")\"; done"
-	                        ])+"\n")
+                        	        "processors="+PROCESSORS+")\"; done\n"
+	                        ]))
 
         	        os.system(' '.join([
                 	        "for n in",
@@ -239,8 +242,8 @@ if MIX and SFF:
                 	                "for n in",
         	                        FILE+".flow.files; do mothur \"# shhh.flows(file=$n,",
                         	        "order="+ORDER+",",
-	                                "processors="+PROCESSORS+")\"; done"
-        	                ])+"\n")
+	                                "processors="+PROCESSORS+")\"; done\n"
+        	                ]))
 
 	        else:
         	        os.system(' '.join([
@@ -251,13 +254,13 @@ if MIX and SFF:
 			if Debug:
 				error.write(' '.join([
 	                                "for n in",
-        	                        FILE+".sff; do mothur \"# sffinfo(sff=$n, flow=T)\"; done"
-                	        ])+"\n")
+        	                        FILE+".sff; do mothur \"# sffinfo(sff=$n, flow=T)\"; done\n"
+                	        ]))
 
         	        os.system(' '.join([
                 	        "for n in",
                         	FILE+".flow; do mothur \"# trim.flows(flow=$n,",
-	                        "oligos="+FILE+".oligos,",
+	                        "oligos="+OLIGOS+".oligos,",
         	                "pdiffs=2, bdiffs=1, minflows=200, maxflows=450,",
 				"processors="+PROCESSORS+")\"; done"
 	                ]))
@@ -266,10 +269,10 @@ if MIX and SFF:
 				error.write(' '.join([
                                 	"for n in",
 	                                FILE+".flow; do mothur \"# trim.flows(flow=$n,",
-        	                        "oligos="+FILE+".oligos,"
+        	                        "oligos="+OLIGOS+".oligos,"
                 	                "pdiffs=2, bdiffs=1, minflows=200, maxflows=450,",
-                        	        "processors="+PROCESSORS+")\"; done"
-                        	])+"\n")
+                        	        "processors="+PROCESSORS+")\"; done\n"
+                        	]))
 
         	        os.system(' '.join([
                 	        "for n in",
@@ -281,366 +284,111 @@ if MIX and SFF:
 				error.write(' '.join([
 	                                "for n in",
         	                        FILE+".flow.files; do mothur \"# shhh.flows(file=$n,",
-                	                "processors="+PROCESSORS+")\"; done"
-                        	])+"\n")
+                	                "processors="+PROCESSORS+")\"; done\n"
+                        	]))
 
-if MIX and not SFF:
-	NO_SHHH = "TRUE"
-	print "NO_SHHH set to TRUE"
-
-################################################################################
-# Deal with the fact that the same barcode sequences may be used in multiple runs
-################################################################################
-
-#Strategy is to get a list of duplicates, and run through them by changing the oligo's file and then the .fasta sequence with randomly generated sequences
-if MIX:
-	#Concatenate OLIGOS Files
-	SAMPLE_LOCATION_DICT = {}	
-
-	#Do concatenation
-	COMBO_NAME = NAME+"_Combined_Libraries"
-
-	if Debug:
-		error.write("Your files hae been concatenated with the base name: "+COMBO_NAME+"\n")
-
-	count = 0
-	with open(MIX+'/'+COMBO_NAME+'.oligos', 'w') as outfile:
-		for fname in INPUT:
-			if not re.search("Combined_Libraries", fname):
-				with open(fname+".oligos") as infile:
-					if count != 0:
-						next(infile)
-					
-					for line in infile:
-						line = line.strip("\r\n")
-
-						#Write to new concatenated oligos file
-						outfile.write(line+"\n")
-						line = line.split()
-
-						#Store Sample name and file location
-						print np.size(line)	
-						if np.size(line)>2:
-							fname = re.sub("\\./","",fname)
-							SAMPLE_LOCATION_DICT[line[2]] = fname 
-							
-					count = count + 1
-
-	## Check for Duplicates
-	DUPLICATE_DICT = {}
-	DUPLICATE_LIST = []
-	OLIGOS = MIX+'/'+COMBO_NAME
-
-	with open(OLIGOS+".oligos") as infile:
-        	#Grab the first 9 nucleotides of the primer for future use
-	        PRIMER = infile.readline()
-		PRIMER = PRIMER.strip()
-        	PRIMER_8 = PRIMER.split()
-	        PRIMER_8 = PRIMER[1][0:8]
-
-		#Read in all barcodes & sample IDs
-		for line in infile:
-			line = line.strip()
-			line = line.split()
-	
-			#Make list of all barcodes
-			DUPLICATE_LIST.append(line[1])
-	
-			#Make dictionary of sample name and barcode
-			if not DUPLICATE_DICT.has_key(line[1]):
-				DUPLICATE_DICT[line[1]] = [line[2]]
-			else:
-				DUPLICATE_DICT[line[1]].append(line[2])
-
-	#Get list of duplicates
-	DUPLICATE_BARCODES = list_duplicates(DUPLICATE_LIST)
-
-	#Change sequence barcodes
-	mock_oligos = open("TEMP.oligos", "w")
-	mock_oligos.write(PRIMER+"\n")
-	
-	with open(OLIGOS+".oligos") as infile:
-		next(infile)
-
-		for line in infile:
-			DUPLICATE_SEQ = line.strip("\r\n")
-			DUPLICATE_SEQ = DUPLICATE_SEQ.split()
-			DUPLICATE_SEQ = DUPLICATE_SEQ[1]
-
-			#See if sequence is duplicated
-			if DUPLICATE_SEQ in DUPLICATE_BARCODES:
-
-				if np.size(DUPLICATE_DICT[DUPLICATE_SEQ]) > 1:
-					DUPLICATE_ID = DUPLICATE_DICT[DUPLICATE_SEQ][0]
-	
-					print "Now Substituting Barcodes Found in Sample: "+DUPLICATE_ID+" due to overlap with another sample.\n"
-						
-					#Only substitute barcode if there is > 1 instance
-					if re.search(DUPLICATE_ID, line):
-						BARCODE_LENGTH = len(DUPLICATE_SEQ)
-						NEW_BARCODE = id_generator(BARCODE_LENGTH, "TCGA")
-	
-						line = re.sub(DUPLICATE_SEQ, NEW_BARCODE, line)
-						mock_oligos.write(line)
-	
-						#Remove element just in case there are more than two duplications (this would mean the duplicate list
-						#would contain multiples of hte same DUPLICATE_SEQ and you'll cycle through until that list is exhausted
-						del DUPLICATE_DICT[DUPLICATE_SEQ][0]
-						
-						if Debug:
-							error.write("The Length of NO_SHHH is: "+str(len(NO_SHHH))+"\n")
-	
-						## Find Correct NAME file
-						CORRECT_NAME = SAMPLE_LOCATION_DICT[DUPLICATE_ID]
-						
-						if len(NO_SHHH) > 1:
-
-							#Replace all instances in the fasta file with sed
-							print(' '.join([
-								"sed",
-								"-i",
-								"\'s/"+DUPLICATE_SEQ+PRIMER_8+"/"+NEW_BARCODE+PRIMER_8+"/g\'",
-								MIX+'/'+CORRECT_NAME+".fasta"
-							]))
-	
-							if Debug:
-								error.write(' '.join([
-									"sed",
-									"-i",
-									"\'s/"+DUPLICATE_SEQ+PRIMER_8+"/"+NEW_BARCODE+PRIMER_8+"/g\'",
-									MIX+'/'+CORRECT_NAME+".fasta"+"\n"
-								]))
-	
-						else:
-							print(' '.join([
-								"sed",
-								"-i",
-								"\'s/"+DUPLICATE_SEQ+PRIMER_8+"/"+NEW_BARCODE+PRIMER_8+"/g\'",
-								MIX+'/'+CORRECT_NAME+".shhh.fasta"
-							]))
-	
-							if Debug:
-								error.write(' '.join([
-									"sed",
-									"-i",
-									"\'s/"+DUPLICATE_SEQ+PRIMER_8+"/"+NEW_BARCODE+PRIMER_8+"/g\'",
-									MIX+'/'+CORRECT_NAME+".shhh.fasta"+"\n"
-								]))
-	
-						error.write("Finished Processing: "+DUPLICATE_ID+"\n")
-					else:
-						mock_oligos.write(line)
-				else:
-					mock_oligos.write(line)
-	
-			#Write oligos that have nothing to do with duplicates
-			else:
-				mock_oligos.write(line)
-	
-		mock_oligos.close()
-	
-		#Re-name old oligos file and new oligos file
-		os.system(' '.join([
-			"mv",
-			MIX+'/'+COMBO_NAME+".oligos",
-			MIX+'/'+COMBO_NAME+".original.oligos"
-		]))
-	
-		os.system(' '.join([
-			"mv",
-			"TEMP.oligos",
-			MIX+'/'+COMBO_NAME+".oligos"
-		]))
-
-## Concatenate multiple files into one
-if MIX and SFF or MIX and RERUN:
-
-	#FASTA
-	with open(MIX+'/'+COMBO_NAME+'.shhh.fasta', 'w') as outfile:
-	    for fname in INPUT:
-		if not re.search("Combined_Libraries", fname):
-	        	with open(fname+".shhh.fasta") as infile:
-		            for line in infile:
-				line = line.strip("\r\n")
-        	        	outfile.write(line+"\n")
-
-	#NAMES
-	with open(MIX+'/'+COMBO_NAME+'.shhh.names', 'w') as outfile:
-	    for fname in INPUT:
-		if not re.search("Combined_Libraries", fname):
-	        	with open(fname+".shhh.names") as infile:
-		            for line in infile:
-				line = line.strip("\r\n")
-        	        	outfile.write(line+"\n")
-
-	OLIGOS = MIX+'/'+COMBO_NAME
-	INPUT = MIX+'/'+COMBO_NAME
-	
-	if Debug:
-		error.write(str(OLIGOS))
-
-# Do concatenation of other files
-elif MIX and not SFF or MIX and not RERUN:
-	#Do concatenation
-	COMBO_NAME = NAME+"_Combined_Libraries"
-
-	#FASTA
-	with open(MIX+'/'+COMBO_NAME+'.fasta', 'w') as outfile:
-	    for fname in INPUT:
-        	with open(fname+".fasta") as infile:
-	            for line in infile:
-			line = line.strip("\r\n")
-        	        outfile.write(line+"\n")
-
-	#NAMES
-	with open(MIX+'/'+COMBO_NAME+'.names', 'w') as outfile:
-	    for fname in INPUT:
-        	with open(fname+".names") as infile:
-	            for line in infile:
-			line = line.strip("\r\n")
-        	        outfile.write(line+"\n")
-
-	OLIGOS = MIX+'/'+COMBO_NAME
-	INPUT = MIX+'/'+COMBO_NAME
-
-	if Debug:
-		error.write(str(OLIGOS))
-
-if not MIX and SFF:
-	## The chemistry CAN be different for various sequencing runs, MOTHUR provides for this based on the "ORDER" of flows are read. This is sometimes necessary to specify.
-        if ORDER:
-		os.system(' '.join([
-			"for n in",
-			INPUT+".sff; do mothur \"# sffinfo(sff=$n, flow=T)\"; done"
-		]))
-
-		if Debug:
-			error.write(' '.join([
-                   		"for n in",
-	                        INPUT+".sff; do mothur \"# sffinfo(sff=$n, flow=T)\"; done\n"
-        	        ]))
+if SFF:
+	for FILE in INPUT:
+		if MIX:
+			OLIGOS = FILE
 
 		os.system(' '.join([
 			"for n in",
-			INPUT+".flow; do mothur \"# trim.flows(flow=$n,",
-			"oligos="+OLIGOS+".oligos,"
-			"pdiffs=2, bdiffs=1, minflows=200, maxflows=450,",
-                        "order="+ORDER+",",
+			FILE+".shhh.fasta; do mothur \"# summary.seqs(fasta=$n,",
+			"name="+FILE+".shhh.names,",
 			"processors="+PROCESSORS+")\"; done"
 		]))
-
+	
 		if Debug:
 			error.write(' '.join([
-	                        "for n in",
-        	                INPUT+".flow; do mothur \"# trim.flows(flow=$n,",
-                	        "oligos="+OLIGOS+".oligos,"
-                        	"pdiffs=2, bdiffs=1, minflows=200, maxflows=450,",
-	                        "order="+ORDER+",",
-        	                "processors="+PROCESSORS+")\"; done\n"
-                	]))
-
-                os.system(' '.join([
-                        "for n in",
-                        INPUT+".flow.files; do mothur \"# shhh.flows(file=$n,",
-                        "order="+ORDER+",",
+				"for n in",
+				FILE+".shhh.fasta; do mothur \"# summary.seqs(fasta=$n,",
+				"name="+FILE+".shhh.names,",
+				"processors="+PROCESSORS+")\"; done\n"
+			]))
+	
+		os.system(' '.join([
+			"for n in",
+			FILE+".shhh.fasta; do mothur \"# trim.seqs(fasta=$n,",
+			"oligos="+OLIGOS+".oligos, name="+FILE+".shhh.names,",
+			"maxambig=0, maxhomop=8, bdiffs=1, pdiffs=2, minlength=200,",
 			"processors="+PROCESSORS+")\"; done"
-                ]))
-
+		]))
+	
 		if Debug:
 			error.write(' '.join([
-	                        "for n in",
-        	                INPUT+".flow.files; do mothur \"# shhh.flows(file=$n,",
-                	        "order="+ORDER+",",
-                        	"processors="+PROCESSORS+")\"; done\n"
-	                ]))
+				"for n in",
+				FILE+".shhh.fasta; do mothur \"# trim.seqs(fasta=$n,",
+				"oligos="+OLIGOS+".oligos, name="+FILE+".shhh.names,",
+				"maxambig=0, maxhomop=8, bdiffs=1, pdiffs=2, minlength=200,",
+				"processors="+PROCESSORS+")\"; done\n"
+			]))
 
-        else:
-                os.system(' '.join([
-                        "for n in",
-                        INPUT+".sff; do mothur \"# sffinfo(sff=$n, flow=T)\"; done"
-                ]))
+	if MIX:
+		## Concatenate files
+		for FILE in INPUT:
+			## Fasta
+			os.system(' '.join([ 
+				"cat",
+				FILE+".shhh.trim.fasta",
+				">>",
+				NAME+"_Combined_Libraries.shhh.trim.fasta"
+			]))
 
-		if Debug:
-			error.write(' '.join([
-                   	     "for n in",
-	                        INPUT+".sff; do mothur \"# sffinfo(sff=$n, flow=T)\"; done\n"
-        	        ]))
+			if Debug:
+				error.write(' '.join([
+					"cat",
+					FILE+".shhh.trim.fasta",
+					">>",
+					NAME+"_Combined_Libraries.shhh.trim.fasta\n"
+				]))
+				
+			## Names
+			os.system(' '.join([ 
+				"cat",
+				FILE+".shhh.trim.names",
+				">>",
+				NAME+"_Combined_Libraries.shhh.trim.names"
+			]))				
 
-                os.system(' '.join([
-                        "for n in",
-                        INPUT+".flow; do mothur \"# trim.flows(flow=$n,",
-                        "oligos="+OLIGOS+".oligos,"
-                        "pdiffs=2, bdiffs=1, minflows=200, maxflows=450,",
-			"processors="+PROCESSORS+")\"; done"
-                ]))
+			if Debug:
+				error.write(' '.join([
+					"cat",
+					FILE+".shhh.trim.names",
+					">>",
+					NAME+"_Combined_Libraries.shhh.trim.names\n"
+				]))
+				
+			## Group	
+			os.system(' '.join([ 
+				"cat",
+				FILE+".shhh.groups",
+				">>",
+				NAME+"_Combined_Libraries.shhh.groups"
+			]))
 
-		if Debug:
-			error.write(' '.join([
-        	                "for n in",
-	                        INPUT+".flow; do mothur \"# trim.flows(flow=$n,",
-                        	"oligos="+OLIGOS+".oligos,"
-                	        "pdiffs=2, bdiffs=1, minflows=200, maxflows=450,",
-        	                "processors="+PROCESSORS+")\"; done\n"
-	                ]))
-
-                os.system(' '.join([
-                        "for n in",
-                        INPUT+".flow.files; do mothur \"# shhh.flows(file=$n,",
-			"processors="+PROCESSORS+")\"; done"
-                ]))
-
-		if Debug:
-			error.write(' '.join([
-	                        "for n in",
-        	                INPUT+".flow.files; do mothur \"# shhh.flows(file=$n,",
-                	        "processors="+PROCESSORS+")\"; done\n"
-	                ]))
-
-if SFF or RERUN:
-	os.system(' '.join([
-		"for n in",
-		INPUT+".shhh.fasta; do mothur \"# summary.seqs(fasta=$n,",
-		"name="+INPUT+".shhh.names,",
-		"processors="+PROCESSORS+")\"; done"
-	]))
-
-	if Debug:
-		error.write(' '.join([
-	                "for n in",
-        	        INPUT+".shhh.fasta; do mothur \"# summary.seqs(fasta=$n,",
-                	"name="+INPUT+".shhh.names,",
-	                "processors="+PROCESSORS+")\"; done\n"
-        	]))
-
-	os.system(' '.join([
-		"for n in",
-		INPUT+".shhh.fasta; do mothur \"# trim.seqs(fasta=$n,",
-		"oligos="+OLIGOS+".oligos, name="+INPUT+".shhh.names,",
-		"maxambig=0, maxhomop=8, bdiffs=1, pdiffs=2, minlength=200,",
-		"processors="+PROCESSORS+")\"; done"
-	]))
-
-	if Debug:
-		error.write(' '.join([
-	                "for n in",
-        	        INPUT+".shhh.fasta; do mothur \"# trim.seqs(fasta=$n,",
-                	"oligos="+OLIGOS+".oligos, name="+INPUT+".shhh.names,",
-	                "maxambig=0, maxhomop=8, bdiffs=1, pdiffs=2, minlength=200,",
-        	        "processors="+PROCESSORS+")\"; done\n"
-	        ]))
+			if Debug:
+				error.write(' '.join([
+					"cat",
+					FILE+".shhh.groups",
+					">>",
+					NAME+"_Combined_Libraries.shhh.groups\n"
+				]))
+				
+		INPUT = NAME+"_Combined_Libraries"	
 
 	os.system(' '.join([
 		"for n in",
 		INPUT+".shhh.trim.fasta; do mothur \"# unique.seqs(fasta=$n,",
-		"name="+INPUT+".shhh.names)\"; done"
+		"name="+INPUT+".shhh.trim.names)\"; done"
 	]))
 
 	if Debug:
 		error.write(' '.join([
 	                "for n in",
         	        INPUT+".shhh.trim.fasta; do mothur \"# unique.seqs(fasta=$n,",
-                	"name="+INPUT+".shhh.names)\"; done\n"
-	]))
+                	"name="+INPUT+".shhh.trim.names)\"; done\n"
+                ]))
 
 	os.system(' '.join([
 		"for n in",
@@ -1041,40 +789,96 @@ if SFF or RERUN:
 	        ]))
 
 else:
-	os.system(' '.join([
-		"for n in",
-		INPUT+".fasta; do mothur \"# summary.seqs(fasta=$n,",
-		"name="+INPUT+".names,",
-		"processors="+PROCESSORS+")\"; done"
-	]))
+	for FILE in INPUT:
+		if MIX:
+			OLIGOS = FILE
 
-	if Debug:
-		error.write(' '.join([
-	                "for n in",
-        	        INPUT+".fasta; do mothur \"# summary.seqs(fasta=$n,",
-                	"name="+INPUT+".names,",
-	                "processors="+PROCESSORS+")\"; done\n"
-        	]))
-
-	os.system(' '.join([
-		"for n in",
-		INPUT+".fasta; do mothur \"# trim.seqs(fasta=$n,",
-		"oligos="+OLIGOS+".oligos,",
-		"qfile="+INPUT+".qual,",
-		"maxambig=0, maxhomop=8, bdiffs=1, pdiffs=2, qwindowaverage=35, qwindowsize=50, minlength=200,",
-		"processors="+PROCESSORS+")\"; done"
-	]))
-
-	if Debug:
-		error.write(' '.join([
+		os.system(' '.join([
 			"for n in",
-			INPUT+".fasta; do mothur \"# trim.seqs(fasta=$n,",
-			"oligos="+OLIGOS+".oligos,",
-			"qfile="+INPUT+".qual,",
-			"maxambig=0, maxhomop=8, bdiffs=1, pdiffs=2, qwindowaverage=35, qwindowsize=50, minlength=200,",
-			"processors="+PROCESSORS+")\"; done\n"
+			FILE+".fasta; do mothur \"# summary.seqs(fasta=$n,",
+			"name="+FILE+".names,",
+			"processors="+PROCESSORS+")\"; done"
 		]))
+	
+		if Debug:
+			error.write(' '.join([
+				"for n in",
+				FILE+".fasta; do mothur \"# summary.seqs(fasta=$n,",
+				"name="+FILE+".names,",
+				"processors="+PROCESSORS+")\"; done\n"
+			]))
+	
+		os.system(' '.join([
+			"for n in",
+			FILE+".fasta; do mothur \"# trim.seqs(fasta=$n,",
+			"oligos="+OLIGOS+".oligos,",
+			"qfile="+FILE+".qual,",
+			"maxambig=0, maxhomop=8, bdiffs=1, pdiffs=2, qwindowaverage=35, qwindowsize=50, minlength=200,",
+			"processors="+PROCESSORS+")\"; done"
+		]))
+	
+		if Debug:
+			error.write(' '.join([
+				"for n in",
+				FILE+".fasta; do mothur \"# trim.seqs(fasta=$n,",
+				"oligos="+OLIGOS+".oligos,",
+				"qfile="+FILE+".qual,",
+				"maxambig=0, maxhomop=8, bdiffs=1, pdiffs=2, qwindowaverage=35, qwindowsize=50, minlength=200,",
+				"processors="+PROCESSORS+")\"; done\n"
+			]))
+	if MIX:
+		## Concatenate files
+		for FILE in INPUT:
+			## Fasta
+			os.system(' '.join([ 
+				"cat",
+				FILE+".trim.fasta",
+				">>",
+				NAME+"_Combined_Libraries.trim.fasta"
+			]))
 
+			if Debug:
+				error.write(' '.join([
+					"cat",
+					FILE+".shhh.trim.fasta",
+					">>",
+					NAME+"_Combined_Libraries.trim.fasta\n"
+				]))
+				
+			## Names
+			os.system(' '.join([ 
+				"cat",
+				FILE+".trim.names",
+				">>",
+				NAME+"_Combined_Libraries.trim.names"
+			]))				
+
+			if Debug:
+				error.write(' '.join([
+					"cat",
+					FILE+".trim.names",
+					">>",
+					NAME+"_Combined_Libraries.trim.names\n"
+				]))
+				
+			## Group	
+			os.system(' '.join([ 
+				"cat",
+				FILE+".groups",
+				">>",
+				NAME+"_Combined_Libraries.groups"
+			]))
+
+			if Debug:
+				error.write(' '.join([
+					"cat",
+					FILE+".shhh.groups",
+					">>",
+					NAME+"_Combined_Libraries.groups\n"
+				]))
+				
+		INPUT = NAME+"_Combined_Libraries"
+		
 	os.system(' '.join([
 		"for n in",
 		INPUT+".trim.fasta; do mothur \"# unique.seqs(fasta=$n,",
