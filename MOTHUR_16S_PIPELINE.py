@@ -30,7 +30,8 @@ REQUIRED ARGUMENTS:
 
 		OR JUST:
 		-m	specify directory if you would like to combine multiple .sff files from a specific directory.
-			(the directory must also contain all the associated .oligos files for each run)
+			- Provide the FULL PATH (i.e. don't use "." to specify current directory)
+			- the directory must also contain all the associated .oligos files for each run)
 
 DEPENDENCY:
 		-mothur v.1.32.1 (written using, probably valide for earlier and later versions)
@@ -86,14 +87,6 @@ PROCESSORS=''
 OUTPUT=''
 MIX=''
 Debug=''
-<<<<<<< HEAD
-=======
-<<<<<<< HEAD
-NO_SHHH=''
-=======
-NO_SHHH = ''
->>>>>>> origin/master
->>>>>>> origin/master
 
 # Read command line args
 myopts, args = getopt.getopt(sys.argv[1:],"n:i:o:S:b:R:f:O:p:m:")
@@ -292,264 +285,8 @@ if SFF and not RERUN:
 				error.write(' '.join([
 	                                "for n in",
         	                        FILE+".flow.files; do mothur \"# shhh.flows(file=$n,",
-<<<<<<< HEAD
                 	                "processors="+PROCESSORS+")\"; done\n"
                         	]))
-=======
-                	                "processors="+PROCESSORS+")\"; done"
-                        	])+"\n")
-
-<<<<<<< HEAD
-if MIX and not SFF and not RERUN:
-=======
-if MIX and not SFF:
->>>>>>> origin/master
-	NO_SHHH = "TRUE"
-	print "NO_SHHH set to TRUE"
-
-################################################################################
-# Deal with the fact that the same barcode sequences may be used in multiple runs
-################################################################################
-
-#Strategy is to get a list of duplicates, and run through them by changing the oligo's file and then the .fasta sequence with randomly generated sequences
-if MIX:
-	#Concatenate OLIGOS Files
-	SAMPLE_LOCATION_DICT = {}	
-
-	#Do concatenation
-	COMBO_NAME = NAME+"_Combined_Libraries"
-
-	if Debug:
-		error.write("Your files hae been concatenated with the base name: "+COMBO_NAME+"\n")
-
-	count = 0
-	with open(MIX+'/'+COMBO_NAME+'.oligos', 'w') as outfile:
-		for fname in INPUT:
-			if not re.search("Combined_Libraries", fname):
-<<<<<<< HEAD
-				with open(MIX+"/"+fname+".oligos") as infile:
-=======
-				with open(fname+".oligos") as infile:
->>>>>>> origin/master
-					if count != 0:
-						next(infile)
-					
-					for line in infile:
-						line = line.strip("\r\n")
-<<<<<<< HEAD
-
-						#Write to new concatenated oligos file
-						outfile.write(line+"\n")
-						line = line.split()
-
-						#Store which pyrotag sample came from which oligos file
-						if np.size(line)>2:
-							fname = re.sub("\\./","",fname)
-							SAMPLE_LOCATION_DICT[line[2]] = fname 
-							
-					count = count + 1
-
-=======
-
-						#Write to new concatenated oligos file
-						outfile.write(line+"\n")
-						line = line.split()
-
-						#Store Sample name and file location
-						print np.size(line)	
-						if np.size(line)>2:
-							fname = re.sub("\\./","",fname)
-							SAMPLE_LOCATION_DICT[line[2]] = fname 
-							
-					count = count + 1
-
->>>>>>> origin/master
-	## Check for Duplicates
-	DUPLICATE_DICT = {}
-	DUPLICATE_LIST = []
-	OLIGOS = MIX+'/'+COMBO_NAME
-
-	with open(OLIGOS+".oligos") as infile:
-        	#Grab the first 9 nucleotides of the primer for future use
-	        PRIMER = infile.readline()
-		PRIMER = PRIMER.strip()
-<<<<<<< HEAD
-        	SPLIT = PRIMER.split()
-	        PRIMER_8 = SPLIT[1][0:8]
-=======
-        	PRIMER_8 = PRIMER.split()
-	        PRIMER_8 = PRIMER[1][0:8]
->>>>>>> origin/master
-
-		#Read in all barcodes & sample IDs
-		for line in infile:
-			line = line.strip()
-			line = line.split()
-	
-			#Make list of all barcodes
-			DUPLICATE_LIST.append(line[1])
-	
-			#Make dictionary of sample name and barcode
-			if not DUPLICATE_DICT.has_key(line[1]):
-				DUPLICATE_DICT[line[1]] = [line[2]]
-			else:
-				DUPLICATE_DICT[line[1]].append(line[2])
-
-	#Get list of duplicates
-	DUPLICATE_BARCODES = list_duplicates(DUPLICATE_LIST)
-
-	#Change sequence barcodes
-	mock_oligos = open("TEMP.oligos", "w")
-	mock_oligos.write(PRIMER+"\n")
-	
-	with open(OLIGOS+".oligos") as infile:
-		next(infile)
-
-		for line in infile:
-			DUPLICATE_SEQ = line.strip("\r\n")
-			DUPLICATE_SEQ = DUPLICATE_SEQ.split()
-			DUPLICATE_SEQ = DUPLICATE_SEQ[1]
-
-			#See if sequence is duplicated
-			if DUPLICATE_SEQ in DUPLICATE_BARCODES:
-
-				if np.size(DUPLICATE_DICT[DUPLICATE_SEQ]) > 1:
-					DUPLICATE_ID = DUPLICATE_DICT[DUPLICATE_SEQ][0]
-	
-					print "Now Substituting Barcodes Found in Sample: "+DUPLICATE_ID+" due to overlap with another sample.\n"
-						
-					#Only substitute barcode if there is > 1 instance
-					if re.search(DUPLICATE_ID, line):
-						BARCODE_LENGTH = len(DUPLICATE_SEQ)
-						NEW_BARCODE = id_generator(BARCODE_LENGTH, "TCGA")
-	
-						line = re.sub(DUPLICATE_SEQ, NEW_BARCODE, line)
-						mock_oligos.write(line)
-	
-						#Remove element just in case there are more than two duplications (this would mean the duplicate list
-						#would contain multiples of hte same DUPLICATE_SEQ and you'll cycle through until that list is exhausted
-						del DUPLICATE_DICT[DUPLICATE_SEQ][0]
-						
-						if Debug:
-							error.write("The Length of NO_SHHH is: "+str(len(NO_SHHH))+"\n")
-	
-						## Find Correct NAME file
-						CORRECT_NAME = SAMPLE_LOCATION_DICT[DUPLICATE_ID]
-						
-						if len(NO_SHHH) > 1:
-
-							#Replace all instances in the fasta file with sed
-							os.system(' '.join([
-								"sed",
-								"-i",
-								"\'s/"+DUPLICATE_SEQ+PRIMER_8+"/"+NEW_BARCODE+PRIMER_8+"/g\'",
-								MIX+'/'+CORRECT_NAME+".fasta"
-							]))
-	
-							if Debug:
-								error.write(' '.join([
-									"sed",
-									"-i",
-									"\'s/"+DUPLICATE_SEQ+PRIMER_8+"/"+NEW_BARCODE+PRIMER_8+"/g\'",
-									MIX+'/'+CORRECT_NAME+".fasta"+"\n"
-								]))
-	
-						else:
-							os.system(' '.join([
-								"sed",
-								"-i",
-								"\'s/"+DUPLICATE_SEQ+PRIMER_8+"/"+NEW_BARCODE+PRIMER_8+"/g\'",
-								MIX+'/'+CORRECT_NAME+".shhh.fasta"
-							]))
-	
-							if Debug:
-								error.write(' '.join([
-									"sed",
-									"-i",
-									"\'s/"+DUPLICATE_SEQ+PRIMER_8+"/"+NEW_BARCODE+PRIMER_8+"/g\'",
-									MIX+'/'+CORRECT_NAME+".shhh.fasta"+"\n"
-								]))
-	
-						error.write("Finished Processing: "+DUPLICATE_ID+"\n")
-					else:
-						mock_oligos.write(line)
-				else:
-					mock_oligos.write(line)
-	
-			#Write oligos that have nothing to do with duplicates
-			else:
-				mock_oligos.write(line)
-	
-		mock_oligos.close()
-	
-		#Re-name old oligos file and new oligos file
-		os.system(' '.join([
-			"mv",
-			MIX+'/'+COMBO_NAME+".oligos",
-			MIX+'/'+COMBO_NAME+".original.oligos"
-		]))
-	
-		os.system(' '.join([
-			"mv",
-			"TEMP.oligos",
-			MIX+'/'+COMBO_NAME+".oligos"
-		]))
-
-## Concatenate multiple files into one
-if MIX and SFF or MIX and RERUN:
-
-	#FASTA
-	with open(MIX+'/'+COMBO_NAME+'.shhh.fasta', 'w') as outfile:
-	    for fname in INPUT:
-		if not re.search("Combined_Libraries", fname):
-	        	with open(fname+".shhh.fasta") as infile:
-		            for line in infile:
-				line = line.strip("\r\n")
-        	        	outfile.write(line+"\n")
-
-	#NAMES
-	with open(MIX+'/'+COMBO_NAME+'.shhh.names', 'w') as outfile:
-	    for fname in INPUT:
-		if not re.search("Combined_Libraries", fname):
-	        	with open(fname+".shhh.names") as infile:
-		            for line in infile:
-				line = line.strip("\r\n")
-        	        	outfile.write(line+"\n")
-
-	OLIGOS = MIX+'/'+COMBO_NAME
-	INPUT = MIX+'/'+COMBO_NAME
-	
-	if Debug:
-		error.write(str(OLIGOS))
-
-# Do concatenation of other files
-<<<<<<< HEAD
-elif MIX and not SFF and not RERUN:
-=======
-elif MIX and not SFF or MIX and not RERUN:
->>>>>>> origin/master
-	#Do concatenation
-	COMBO_NAME = NAME+"_Combined_Libraries"
-
-	#FASTA
-	with open(MIX+'/'+COMBO_NAME+'.fasta', 'w') as outfile:
-	    for fname in INPUT:
-        	with open(fname+".fasta") as infile:
-	            for line in infile:
-			line = line.strip("\r\n")
-        	        outfile.write(line+"\n")
-
-	#NAMES
-	with open(MIX+'/'+COMBO_NAME+'.names', 'w') as outfile:
-	    for fname in INPUT:
-        	with open(fname+".names") as infile:
-	            for line in infile:
-			line = line.strip("\r\n")
-        	        outfile.write(line+"\n")
-
-	OLIGOS = MIX+'/'+COMBO_NAME
-	INPUT = MIX+'/'+COMBO_NAME
->>>>>>> origin/master
 
 if SFF:
 	for FILE in INPUT:
@@ -672,7 +409,7 @@ if SFF:
 	os.system(' '.join([
 		"for n in",
 		INPUT+".shhh.trim.unique.align; do mothur \"# summary.seqs(fasta=$n,",
-		"name="+INPUT+".shhh.trim.names,",
+		"name="+INPUT+".shhh.trim.unique.names,",
 		"processors="+PROCESSORS+")\"; done"
 	]))
 
@@ -680,7 +417,7 @@ if SFF:
 		error.write(' '.join([
 	                "for n in",
         	        INPUT+".shhh.trim.unique.align; do mothur \"# summary.seqs(fasta=$n,",
-                	"name="+INPUT+".shhh.trim.names,",
+                	"name="+INPUT+".shhh.trim.unique.names,",
 	                "processors="+PROCESSORS+")\"; done\n"
         	]))
 
@@ -697,7 +434,7 @@ if SFF:
 	os.system(' '.join([
 		"for n in",
 		INPUT+".shhh.trim.unique.align; do mothur \"# screen.seqs(fasta=$n,",
-		"name="+INPUT+".shhh.trim.names,",
+		"name="+INPUT+".shhh.trim.unique.names,",
 		"group="+INPUT+".shhh.groups,",
 		"start="+start+",",
 		"minlength="+minlength+",",
@@ -708,7 +445,7 @@ if SFF:
 		error.write(' '.join([
 	                "for n in",
         	        INPUT+".shhh.trim.unique.align; do mothur \"# screen.seqs(fasta=$n,",
-                	"name="+INPUT+".shhh.trim.names,",
+                	"name="+INPUT+".shhh.trim.unique.names,",
 	                "group="+INPUT+".shhh.groups,",
         	        "start="+start+",",
                 	"minlength="+minlength+",",
@@ -733,14 +470,14 @@ if SFF:
 	os.system(' '.join([
 		"for n in",
 		INPUT+".shhh.trim.unique.good.filter.fasta; do mothur \"# unique.seqs(fasta=$n,",
-		"name="+INPUT+".shhh.trim.good.names)\"; done"
+		"name="+INPUT+".shhh.trim.unique.good.names)\"; done"
 	]))
 
 	if Debug:
 		error.write(' '.join([
 	                "for n in",
         	        INPUT+".shhh.trim.unique.good.filter.fasta; do mothur \"# unique.seqs(fasta=$n,",
-                	"name="+INPUT+".shhh.trim.good.names)\"; done\n"
+                	"name="+INPUT+".shhh.trim.unique.good.names)\"; done\n"
 	        ]))
 
 	os.system(' '.join([
@@ -1104,7 +841,7 @@ else:
 			if Debug:
 				error.write(' '.join([
 					"cat",
-					FILE+".shhh.trim.fasta",
+					FILE+".trim.fasta",
 					">>",
 					NAME+"_Combined_Libraries.trim.fasta\n"
 				]))
@@ -1136,7 +873,7 @@ else:
 			if Debug:
 				error.write(' '.join([
 					"cat",
-					FILE+".shhh.groups",
+					FILE+".groups",
 					">>",
 					NAME+"_Combined_Libraries.groups\n"
 				]))
